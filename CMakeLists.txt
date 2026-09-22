@@ -34,6 +34,13 @@ add_executable(pd_bankcheck tools/pd_bankcheck.c)
 target_link_libraries(pd_bankcheck PRIVATE pdcore)
 add_test(NAME bank COMMAND pd_bankcheck)
 
+# Asks the harder question: does each preset behave like the thing it is named
+# after. A marimba that sustains for four seconds is not a marimba however
+# clean it measures.
+add_executable(pd_character tools/pd_character.c)
+target_link_libraries(pd_character PRIVATE pdcore)
+add_test(NAME character COMMAND pd_character)
+
 enable_testing()
 foreach(t osc env voice)
   add_executable(test_${t} tests/test_${t}.c)

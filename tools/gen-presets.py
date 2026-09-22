@@ -113,7 +113,7 @@ PRESETS = [
    2, velw=.45, velv=.55, gain=0.56),
  # Pizzicato: the same two saws, but the DCA is gone in a quarter second and
  # the DCW with it.
- Preset("Pizzicato", "Strings", [
+ Preset("Pizzicato", "Pluck", [
    L('saw', .70, -8, wenv=env([99,64,58],[92,10,0],1,2), aenv=env([99,54,60],[99,16,0],1,2)),
    L('saw', .48, +8, wenv=env([99,62,56],[86,8,0],1,2), aenv=env([99,52,58],[99,12,0],1,2))],
    2, velw=.9, velv=.85, gain=1.240),
@@ -122,13 +122,13 @@ PRESETS = [
  # milliseconds later, and that lag is the whole difference between a brass
  # section and a sawtooth with an envelope on it.
  Preset("Brass Stab", "Brass", [
-   L('saw', .62, -6, wenv=env([62,44,50],[99,52,0],1,2), aenv=env([88,48,54],[99,80,0],1,2)),
-   L('saw', .52, +6, wenv=env([60,42,48],[94,48,0],1,2), aenv=env([86,46,52],[99,78,0],1,2))],
+   L('saw', .62, -6, wenv=env([44,30,50],[99,88,0],1,2), aenv=env([90,48,54],[99,86,0],1,2)),
+   L('saw', .52, +6, wenv=env([42,28,48],[96,84,0],1,2), aenv=env([88,46,52],[99,84,0],1,2))],
    2, velw=.85, velv=.7, gain=0.44),
  # An ensemble is the same lag, longer, and further detuned.
  Preset("Brass Swell", "Brass", [
-   L('saw', .58, -9, wenv=env([40,32,42],[96,48,0],1,2), aenv=env([56,42,48],[99,86,0],1,2)),
-   L('saw', .52, +9, wenv=env([38,30,40],[90,44,0],1,2), aenv=env([54,40,46],[99,84,0],1,2))],
+   L('saw', .58, -9, wenv=env([32,26,42],[99,86,0],1,2), aenv=env([58,42,48],[99,88,0],1,2)),
+   L('saw', .52, +9, wenv=env([30,24,40],[95,82,0],1,2), aenv=env([56,40,46],[99,86,0],1,2))],
    2, velw=.7, velv=.65, gain=0.538),
  # The breathy woodwind. Almost no harmonics, a soft attack, and noise shaking
  # the waveform rather than the level, which reads as air rather than as hiss
@@ -138,8 +138,8 @@ PRESETS = [
    1, mix='noise', noise=.22, velw=.6, velv=.7, modw=.4, gain=0.426),
  # A reed has more in it than a flute and a slower start than a brass.
  Preset("Reed Pipe", "Wind", [
-   L('rtri', .70, -2, wenv=env([48,38,46],[86,40,0],1,2), aenv=env([58,44,50],[99,88,0],1,2))],
-   1, mix='noise', noise=.12, velw=.75, velv=.7, gain=1.394),
+   L('dsine', .70, -2, wenv=env([46,36,46],[58,38,0],1,2), aenv=env([56,44,50],[99,88,0],1,2))],
+   1, mix='noise', noise=.12, velw=.75, velv=.7, gain=0.464),
  # The same idea played fast, which is where it turns into a lead.
  Preset("Sweep Lead", "Lead", [
    L('rsaw', .74, 0, wenv=env([58,40,48],[99,26,0],1,2), aenv=env([92,50,56],[99,88,0],1,2))],
@@ -154,8 +154,8 @@ PRESETS = [
  # A bell that holds, which is a pad made out of a bell: the attack of one and
  # the sustain of the other.
  Preset("Bell Pad", "Pad", [
-   L('rtri', .56, -6, wenv=env([72,30,36],[99,30,0],1,2), aenv=env([88,32,40],[99,76,0],1,2)),
-   L('rtrap', .42, +6, wenv=env([68,28,34],[92,26,0],1,2), aenv=env([86,30,38],[99,72,0],1,2))],
+   L('rtri', .56, -6, wenv=env([72,30,36],[99,30,0],1,2), aenv=env([46,32,40],[99,76,0],1,2)),
+   L('rtrap', .42, +6, wenv=env([68,28,34],[92,26,0],1,2), aenv=env([44,30,38],[99,72,0],1,2))],
    2, velw=.7, velv=.65, gain=0.894),
  # Tubular bells: inharmonic by design. The second line sits a tritone away,
  # which is what stops a bell sounding like a note with a bright attack.
@@ -165,26 +165,26 @@ PRESETS = [
    2, velw=.9, velv=.85, gain=0.74),
  # Marimba: wood rather than metal, so the bright part is brief and low order.
  Preset("Marimba", "Mallet", [
-   L('dsine', .76, 0, wenv=env([94,52,52],[62,8,0],1,2), aenv=env([97,44,48],[99,24,0],1,2))],
-   1, velw=.8, velv=.85, gain=0.92),
+   L('dsine', .76, 0, wenv=env([94,40,34,60],[78,4,0,0],2,3), aenv=env([97,56,31,62],[99,42,0,0],2,3))],
+   1, velw=.8, velv=.85, gain=1.000),
  # Steel drum: a bright short hit with a hollow body under it, the second line
  # a fifth up so the partials do not line up neatly.
  Preset("Steel Drum", "Mallet", [
-   L('sawpulse', .70, -3, wenv=env([96,56,54],[99,16,0],1,2), aenv=env([98,46,50],[99,30,0],1,2)),
-   L('rtri', .34, +3, semis=7, wenv=env([99,72,58],[90,6,0],1,2), aenv=env([99,56,54],[99,14,0],1,2))],
-   2, velw=.9, velv=.85, gain=1.188),
+   L('sawpulse', .70, -3, wenv=env([96,42,36,60],[99,3,0,0],2,3), aenv=env([98,62,33,60],[99,38,0,0],2,3)),
+   L('rtri', .34, +3, semis=7, wenv=env([99,48,44,62],[92,0,0,0],2,3), aenv=env([99,78,52,58],[99,6,0,0],2,3))],
+   2, velw=.9, velv=.85, gain=1.000),
  # Vibes: a soft mallet, a partial two octaves up that dies immediately, and a
  # slow tremolo underneath, which on this machine is the amplitude envelope
  # rather than an LFO.
  Preset("Vibe Bar", "Mallet", [
-   L('dsine', .72, -2, wenv=env([84,46,50],[58,10,0],1,2), aenv=env([94,36,44],[99,42,0],1,2)),
-   L('rtri', .26, +2, octave=2, wenv=env([99,88,66],[88,0,0],1,2), aenv=env([99,74,62],[99,6,0],1,2))],
-   2, velw=.8, velv=.85, gain=0.683),
+   L('dsine', .72, -2, wenv=env([90,48,38,58],[72,4,0,0],2,3), aenv=env([94,50,27,58],[99,46,0,0],2,3)),
+   L('rtri', .26, +2, octave=2, wenv=env([99,60,56,66],[92,0,0,0],2,3), aenv=env([99,66,44,62],[99,10,0,0],2,3))],
+   2, velw=.8, velv=.85, gain=1.000),
  # Voices: no attack to speak of, a narrow band of harmonics that stays put,
  # and enough detuning that it never quite settles.
  Preset("Choir Ah", "Vocal", [
    L('dsine', .60, -7, wenv=env([34,28,38],[56,34,0],1,2), aenv=env([44,40,44],[99,90,0],1,2)),
-   L('rtri', .40, +7, wenv=env([32,26,36],[50,30,0],1,2), aenv=env([42,38,42],[99,86,0],1,2))],
+   L('dsine', .52, +7, wenv=env([32,26,36],[52,32,0],1,2), aenv=env([42,38,42],[99,86,0],1,2))],
    2, mix='noise', noise=.10, velw=.35, velv=.5, gain=0.62),
  # The organ: no envelope worth the name in either direction, which is the
  # point. Everything else on this list is shaped; this one is a switch.
