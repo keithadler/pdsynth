@@ -62,7 +62,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libjack-jackd2-dev \
+          sudo apt-get install -y xvfb libasound2-dev libjack-jackd2-dev \
             libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev \
             libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
             libxrender-dev libglu1-mesa-dev mesa-common-dev
@@ -106,4 +106,14 @@ jobs:
             PV=./pluginval
           fi
           VST3=$(find build -name "pdsynth.vst3" | head -1)
-          "$PV" --strictness-level 10 --validate-in-process --timeout-ms 900000 --validate "$VST3"
+          # The editor tests open a real window. A CI runner has no display, and
+          # without one the run dies in a segmentation fault that says nothing
+          # about the plugin. Give it a virtual screen rather than skipping the
+          # editor, which is the part worth testing.
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a "$PV" --strictness-level 10 --validate-in-process \
+              --timeout-ms 900000 --validate "$VST3"
+          else
+            "$PV" --strictness-level 10 --validate-in-process \
+              --timeout-ms 900000 --validate "$VST3"
+          fi
