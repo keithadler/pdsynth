@@ -420,12 +420,14 @@ void Editor::resized()
         auto bar = hdr.withSizeKeepingCentre(hdr.getWidth(), 26);
         prevPreset.setBounds(bar.removeFromLeft(28));
         bar.removeFromLeft(4);
-        nextPreset.setBounds(bar.removeFromRight(28));
-        bar.removeFromRight(6);
+        /* the two bank arrows stay either side of the bank, and the file
+         * buttons sit past them, so the row reads as one thing then another */
         saveSyxBtn.setBounds(bar.removeFromRight(72));
         bar.removeFromRight(4);
         loadSyxBtn.setBounds(bar.removeFromRight(72));
-        bar.removeFromRight(6);
+        bar.removeFromRight(12);
+        nextPreset.setBounds(bar.removeFromRight(28));
+        bar.removeFromRight(4);
         presetBox.setBounds(bar);
     }
 
