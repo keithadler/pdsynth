@@ -60,6 +60,15 @@ private:
      * explicit, so an array of them cannot be brace initialised from literals. */
     juce::ComboBox   presetBox;
     juce::TextButton prevPreset, nextPreset;
+
+    /* Casio voice dumps in and out. A synth that can read the machine's own
+     * patches is worth more than one that cannot, and the file chooser has to
+     * outlive the call that opened it, so it is kept here. */
+    juce::TextButton loadSyxBtn, saveSyxBtn;
+    std::unique_ptr<juce::FileChooser> chooser;
+    void chooseSysexToLoad();
+    void chooseSysexToSave();
+    void showReport(const juce::String& title, const juce::String& body);
     juce::TextButton lineBtn[PD_MAX_LINES];
     juce::TextButton lineCountBtn;      /* how many lines are running */
     juce::ComboBox   filterBox, driveBox;

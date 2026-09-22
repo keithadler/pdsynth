@@ -213,11 +213,17 @@ int pd_sysex_read_ex(const uint8_t *in, size_t len, pd_patch_t *out,
     const uint8_t sub = (uint8_t)((v[O_MFW + 1] >> 6) & 0x03);
     const uint8_t sub2 = (uint8_t)((v[O_SFW + 1] >> 6) & 0x03);
 
-    /* detune between the lines, held once for the voice */
-    const int fine = (v[O_PDET] & 0x0F) + 15 * (v[O_PDET] >> 4);
+    /*
+     * Detune between the lines, held once for the voice. A CZ counts it in
+     * octaves, semitones and cents, and reaches three octaves, so it is not a
+     * fine trim: real patches use it to put line 2 an octave or a fifth away.
+     * pdsynth already has an octave and a semitone control per line, so it is
+     * split across the three rather than crammed into the cents control, where
+     * anything past a semitone would be lost.
+     */
+    const int fine  = (v[O_PDET] & 0x0F) + 15 * (v[O_PDET] >> 4);
     const int note_ = v[O_PDET + 1] % 12, oct_ = v[O_PDET + 1] / 12;
-    double cents = fine + 100.0 * note_ + 1200.0 * oct_;
-    if (v[O_PDS] & 0x01) cents = -cents;
+    const int sign  = (v[O_PDS] & 0x01) ? -1 : 1;
 
     for (int i = 0; i < 2; i++) {
         pd_line_params_t *L = &out->line[i];
@@ -226,7 +232,11 @@ int pd_sysex_read_ex(const uint8_t *in, size_t len, pd_patch_t *out,
         L->octave = (i == 1 && ls == 2) ? octave + 1 : octave;
         L->semitones = 0;
         L->level  = 1.0;
-        L->detune_cents = (i == 1) ? cents : 0.0;
+        if (i == 1) {
+            L->octave    += sign * oct_;
+            L->semitones  = sign * note_;
+            L->detune_cents = sign * (double)fine;
+        }
         L->pitch_env_depth_semitones = 12.0;
         read_env(v, (i == 0) ? O_PMA : O_PSA, (i == 0) ? O_PMAL : O_PSAL, &L->amp_env,   0);
         read_env(v, (i == 0) ? O_PMW : O_PSW, (i == 0) ? O_PMWL : O_PSWL, &L->wave_env,  1);
@@ -347,10 +357,15 @@ size_t pd_sysex_write_ex(const pd_patch_t *p, const uint8_t *base,
     const int ls = (ls_base == 1 || ls_base == 2) ? ls_base : (lines > 1 ? 3 : 0);
     v[O_PFLAG] = (uint8_t)(ls | ((L1->octave > 0 ? 1 : L1->octave < 0 ? 2 : 0) << 2));
 
-    /* Detune belongs to the voice, not to a line, so it is always written. */
-    double cents = L2->detune_cents;
+    /*
+     * Detune belongs to the voice, not to a line, so it is always written, and
+     * it is gathered back from the three controls it was split across. A voice
+     * that plays line 1 with itself an octave up carries that octave in the
+     * line select, not in the detune, so it comes back off here.
+     */
+    double cents = (double)((L2->octave - L1->octave - (ls == 2 ? 1 : 0)) * 1200
+                          + L2->semitones * 100) + L2->detune_cents;
     v[O_PDS] = (uint8_t)(cents < 0 ? 1 : 0);
-    if (cents == 0.0 && base) v[O_PDS] = base[O_PDS];   /* zero has no sign */
     if (cents < 0) cents = -cents;
     if (cents > 4799.0) {
         note(report, "Detune",
@@ -361,7 +376,20 @@ size_t pd_sysex_write_ex(const pd_patch_t *p, const uint8_t *base,
     {
         const int total = (int)(cents + 0.5);
         int semis = total / 100, fine = total % 100;
-        if (fine > 60) fine = 60;
+        /*
+         * A CZ's cents only reach 60, so 61 to 99 is not expressible. The
+         * nearest thing it can hold is either 60 or the next semitone up, and
+         * which of those is nearer depends on the value: 61 is one cent from
+         * 60 and thirty nine from 100.
+         */
+        if (fine > 60) {
+            if (fine >= 80) { semis += 1; fine = 0; }
+            else            { fine = 60; }
+            note(report, "Detune",
+                 "A CZ counts cents only as far as 60. %d is written as the "
+                 "nearest it can hold, which is %d.",
+                 total % 100, fine ? fine : 100);
+        }
         /* fine 0..15 goes out as 00..0F, then 15 to a row: 11..1F, 21..2F ... */
         const int hi = fine <= 15 ? 0 : (fine - 1) / 15;
         const uint8_t d0 = (uint8_t)((hi << 4) | (fine - 15 * hi));
@@ -376,6 +404,15 @@ size_t pd_sysex_write_ex(const pd_patch_t *p, const uint8_t *base,
                 v[O_PDET + 1] = base[O_PDET + 1];
             } else { v[O_PDET] = d0; v[O_PDET + 1] = d1; }
         } else { v[O_PDET] = d0; v[O_PDET + 1] = d1; }
+
+        /*
+         * A detune of nothing has no direction, and the machine still keeps a
+         * sign byte for it. Asking whether the amount is zero has to be asked
+         * of the bytes, not of the number: the amount reaches here through a
+         * float parameter, and a value that went in as zero can come back as
+         * a millionth of a cent, which is not zero and is not a detune either.
+         */
+        if (base && v[O_PDET] == 0 && v[O_PDET + 1] == 0) v[O_PDS] = base[O_PDS];
     }
 
     const pd_wave_t wa = L1->wave, wb = L2->wave;

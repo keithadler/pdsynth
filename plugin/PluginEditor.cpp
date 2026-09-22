@@ -171,6 +171,15 @@ Editor::Editor(Processor& p)
         nextPreset.onClick = [step] { step(+1); };
         addAndMakeVisible(prevPreset);
         addAndMakeVisible(nextPreset);
+
+        loadSyxBtn.setButtonText("Load .syx");
+        saveSyxBtn.setButtonText("Save .syx");
+        loadSyxBtn.setTooltip("Read a Casio CZ voice dump");
+        saveSyxBtn.setTooltip("Write this patch as a Casio CZ voice dump");
+        loadSyxBtn.onClick = [this] { chooseSysexToLoad(); };
+        saveSyxBtn.onClick = [this] { chooseSysexToSave(); };
+        addAndMakeVisible(loadSyxBtn);
+        addAndMakeVisible(saveSyxBtn);
     }
 
     auto wheel = [&](juce::Slider& s, juce::Label& l, const char* name, juce::Colour c) {
@@ -234,7 +243,9 @@ Editor::Editor(Processor& p)
      * whichever is smaller. */
     int w = kW, h = kH;
     if (auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()) {
-        const auto area = d->userArea;
+        /* userBounds is in physical units, so round to whole pixels before
+         * comparing with a size in pixels. */
+        const auto area = d->userBounds.toNearestInt();
         w = juce::jmin(w, area.getWidth()  - 40);
         h = juce::jmin(h, area.getHeight() - 60);
     }
@@ -410,7 +421,11 @@ void Editor::resized()
         prevPreset.setBounds(bar.removeFromLeft(28));
         bar.removeFromLeft(4);
         nextPreset.setBounds(bar.removeFromRight(28));
+        bar.removeFromRight(6);
+        saveSyxBtn.setBounds(bar.removeFromRight(72));
         bar.removeFromRight(4);
+        loadSyxBtn.setBounds(bar.removeFromRight(72));
+        bar.removeFromRight(6);
         presetBox.setBounds(bar);
     }
 
@@ -590,4 +605,56 @@ bool Editor::keyStateChanged(bool)
     heldKeys = down;
     return true;
 }
+/* ---------------------------------------------------------------------------
+ * Casio voice dumps, in and out.
+ *
+ * Both say afterwards what did not survive the trip, because a translation
+ * that quietly loses a control is worse than one that refuses: the player
+ * finds out on the hardware, in front of somebody.
+ * ------------------------------------------------------------------------ */
+void Editor::showReport(const juce::String& title, const juce::String& body)
+{
+    juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::NoIcon,
+                                           title, body, "OK", this);
+}
+
+void Editor::chooseSysexToLoad()
+{
+    chooser = std::make_unique<juce::FileChooser>(
+        "Open a Casio CZ voice dump", juce::File(), "*.syx;*.SYX");
+    chooser->launchAsync(juce::FileBrowserComponent::openMode
+                       | juce::FileBrowserComponent::canSelectFiles,
+        [this](const juce::FileChooser& fc) {
+            const auto f = fc.getResult();
+            if (f == juce::File()) return;
+            juce::String report;
+            const bool ok = proc.loadSysex(f, report);
+            if (ok) {
+                presetBox.setSelectedId(0, juce::dontSendNotification);
+                syncAttachments();
+                refreshToggles();
+                repaint();
+            }
+            showReport(ok ? "Voice loaded" : "Not a CZ voice dump", report);
+        });
+}
+
+void Editor::chooseSysexToSave()
+{
+    chooser = std::make_unique<juce::FileChooser>(
+        "Save as a Casio CZ voice dump",
+        juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+            .getChildFile("pdsynth.syx"), "*.syx");
+    chooser->launchAsync(juce::FileBrowserComponent::saveMode
+                       | juce::FileBrowserComponent::canSelectFiles
+                       | juce::FileBrowserComponent::warnAboutOverwriting,
+        [this](const juce::FileChooser& fc) {
+            const auto f = fc.getResult();
+            if (f == juce::File()) return;
+            juce::String report;
+            const bool ok = proc.saveSysex(f, report);
+            showReport(ok ? "Voice written" : "Could not write the dump", report);
+        });
+}
+
 } // namespace pd

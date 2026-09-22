@@ -133,6 +133,20 @@ if(PDSYNTH_BUILD_PLUGIN)
   target_link_libraries(pd_buscheck PRIVATE pdcore juce::juce_audio_utils
     juce::juce_gui_basics juce::juce_dsp juce::juce_recommended_config_flags)
 
+  # Takes a Casio dump through the plugin's own parameters and back out, which
+  # is the trip a player's patch makes and the one the C tests cannot see.
+  juce_add_console_app(pd_syxplugcheck PRODUCT_NAME "pd_syxplugcheck")
+  target_sources(pd_syxplugcheck PRIVATE tools/pd_syxplugcheck.cpp
+    plugin/PluginProcessor.cpp plugin/PluginEditor.cpp
+    plugin/EnvelopeEditor.cpp plugin/WaveDisplay.cpp plugin/Theme.cpp)
+  target_compile_definitions(pd_syxplugcheck PRIVATE
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_STANDALONE_APPLICATION=1
+    JucePlugin_Name="pdsynth" JucePlugin_IsSynth=1)
+  target_include_directories(pd_syxplugcheck PRIVATE plugin)
+  target_link_libraries(pd_syxplugcheck PRIVATE pdcore juce::juce_audio_utils
+    juce::juce_gui_basics juce::juce_dsp juce::juce_recommended_config_flags)
+  add_test(NAME sysex_through_plugin COMMAND pd_syxplugcheck)
+
   # Draws the editor with no window, so it can be looked at rather than assumed
   juce_add_console_app(pd_uishot PRODUCT_NAME "pd_uishot")
   target_sources(pd_uishot PRIVATE

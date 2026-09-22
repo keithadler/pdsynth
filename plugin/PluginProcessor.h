@@ -22,6 +22,7 @@ extern "C" {
 #include "pd_cv.h"
 #include "pd_fx.h"
 #include "pd_presets.h"
+#include "pd_sysex.h"
 }
 
 namespace pd
@@ -77,6 +78,19 @@ public:
     void loadPreset(int index);
     int  currentPreset = 0;
 
+    /* Writes a patch to the parameters, which is how a preset and a Casio
+     * voice dump both arrive: as parameter changes the host can undo. */
+    void applyPatch(const pd_patch_t& q);
+
+    /*
+     * Casio CZ voice dumps. Loading keeps the voice exactly as it arrived so
+     * that saving it again changes nothing, including the parts pdsynth has no
+     * control for. Both return a written account of anything that could not
+     * make the trip, which is shown rather than swallowed.
+     */
+    bool loadSysex(const juce::File&, juce::String& report);
+    bool saveSysex(const juce::File&, juce::String& report);
+
     /* Notes played on the computer keyboard. They join the same MIDI stream the
      * host sends, so there is one path into the synth rather than two. */
     juce::MidiMessageCollector uiNotes;
@@ -104,6 +118,11 @@ private:
     void openVirtualMidi();
     void handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage&) override;
     std::unique_ptr<juce::MidiInput> virtualIn;
+
+    /* The voice a dump was loaded from, kept so a save can put back what
+     * pdsynth does not model rather than zeroing it. */
+    uint8_t sysexBase[PD_SYSEX_VOICE] {};
+    bool    haveSysexBase = false;
 
     pd_patch_t patch {};
     double wheelBend = 0.0, wheelMod = 0.0;   /* where the wheels are now */

@@ -105,7 +105,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout Processor::layout()
         l.add(std::make_unique<AudioParameterChoice>(
               ParameterID{Ids::line(i, "wave"), 1}, "Line " + n + " Wave", waves, i == 0 ? 0 : 5));
         l.add(std::make_unique<AudioParameterInt>(
-              ParameterID{Ids::line(i, "octave"), 1}, "Line " + n + " Octave", -2, 2, 0));
+              /* A CZ puts its own octave on a line and then detunes the second
+               * by up to three octaves more, so two either way is not enough
+               * to hold a real patch without flattening it. */
+              ParameterID{Ids::line(i, "octave"), 1}, "Line " + n + " Octave", -4, 4, 0));
         l.add(std::make_unique<AudioParameterInt>(
               ParameterID{Ids::line(i, "semis"), 1}, "Line " + n + " Semitones", -12, 12, 0));
         auto cents = AudioParameterFloatAttributes().withStringFromValueFunction(
@@ -114,7 +117,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout Processor::layout()
             [](float v, int) { return juce::String(v, 1) + " st"; });
         l.add(std::make_unique<AudioParameterFloat>(
               ParameterID{Ids::line(i, "detune"), 1}, "Line " + n + " Detune",
-              NormalisableRange<float>(-50.0f, 50.0f, 0.1f), i == 0 ? -7.0f : 7.0f, cents));
+              NormalisableRange<float>(-60.0f, 60.0f, 0.1f), i == 0 ? -7.0f : 7.0f, cents));
         l.add(std::make_unique<AudioParameterFloat>(
               ParameterID{Ids::line(i, "level"), 1}, "Line " + n + " Level",
               NormalisableRange<float>(0.0f, 1.0f), i == 0 ? 0.6f : 0.5f, pct));
@@ -276,8 +279,14 @@ void Processor::pullParameters()
             }
             envs[e]->sustain_step = (uint8_t)raw(Ids::env(i, e, "sustain"));
             envs[e]->end_step     = (uint8_t)raw(Ids::env(i, e, "end"));
-            if (envs[e]->end_step < envs[e]->sustain_step)
-                envs[e]->end_step = envs[e]->sustain_step;
+            /*
+             * A sustain step past the end step is not a mistake to correct:
+             * 18 percent of the envelopes in real CZ patches are like that,
+             * and it simply means the hold is never reached. Moving the end
+             * step to meet it rewrites the player's envelope, and on a patch
+             * loaded from a dump it would rewrite the dump. The engine already
+             * bounds both where it uses them.
+             */
         }
     }
 }
@@ -372,12 +381,14 @@ void Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
     levelNow.store(juce::jmax(pk, levelNow.load() * 0.82f));
 }
 
-void Processor::loadPreset(int index)
+/*
+ * Parameters, not state. A preset and a Casio voice dump both arrive the same
+ * way: as parameter changes the host can see, undo and automate. Swapping
+ * state behind the host's back is how a plugin ends up disagreeing with the
+ * session that saved it.
+ */
+void Processor::applyPatch(const pd_patch_t& q)
 {
-    const pd_preset_t *p = pd_preset(index);
-    if (!p) return;
-    currentPreset = index;
-
     auto set = [&](const juce::String& id, float norm) {
         if (auto* par = apvts.getParameter(id)) {
             par->beginChangeGesture();
@@ -395,7 +406,6 @@ void Processor::loadPreset(int index)
         }
     };
 
-    const pd_patch_t &q = p->patch;
     set("lines", (float)(q.line_count - 1) / 3.0f);
     set("mix", (float)q.mix / 2.0f);
     setRanged("noise", (float)q.noise_amount);
@@ -405,19 +415,14 @@ void Processor::loadPreset(int index)
     setRanged("mod_wave", (float)q.mod_to_wave);
     setRanged("spread", (float)q.spread);
 
-    /* the effects come with the preset, because for some of these the effect
-     * is the sound rather than a decoration on it */
-    const pd_fx_params_t &f = p->fx;
-    setRanged("cho_mix", (float)f.chorus_mix);
-    setRanged("cho_depth", (float)f.chorus_depth_ms);
-    setRanged("cho_rate", (float)f.chorus_rate_hz);
-    setRanged("cho_spread", (float)f.chorus_spread);
-    setRanged("dly_mix", (float)f.delay_mix);
-    setRanged("dly_time", (float)f.delay_time_s);
-    setRanged("dly_fb", (float)f.delay_feedback);
-    setRanged("dly_tone", (float)f.delay_tone);
-    set("drv_mode", (float)f.drive_mode / (float)(PD_DRIVE_MODES - 1));
-    setRanged("drv_amount", (float)f.drive_amount);
+    setRanged("filt_mode", (float)q.filter_mode);
+    setRanged("filt_cutoff", (float)q.filter_cutoff_hz);
+    setRanged("filt_res", (float)q.filter_resonance);
+    setRanged("filt_env", (float)q.filter_env_depth);
+    setRanged("filt_key", (float)q.filter_key_track);
+    setRanged("glide", (float)q.glide_seconds);
+    setRanged("at_wave", (float)q.aftertouch_to_wave);
+    setRanged("at_level", (float)q.aftertouch_to_level);
 
     for (int i = 0; i < PD_MAX_LINES; i++) {
         const pd_line_params_t &L = q.line[i];
@@ -438,6 +443,101 @@ void Processor::loadPreset(int index)
             setRanged(Ids::env(i, e, "end"), (float)envs[e]->end_step);
         }
     }
+}
+
+void Processor::loadPreset(int index)
+{
+    const pd_preset_t *p = pd_preset(index);
+    if (!p) return;
+    currentPreset = index;
+    haveSysexBase = false;      /* a preset is not a dump anybody sent us */
+    applyPatch(p->patch);
+
+    auto setRanged = [&](const juce::String& id, float v) {
+        if (auto* par = apvts.getParameter(id))
+            if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(par)) {
+                rp->beginChangeGesture();
+                rp->setValueNotifyingHost(rp->convertTo0to1(v));
+                rp->endChangeGesture();
+            }
+    };
+    auto set = [&](const juce::String& id, float norm) {
+        if (auto* par = apvts.getParameter(id)) {
+            par->beginChangeGesture();
+            par->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, norm));
+            par->endChangeGesture();
+        }
+    };
+    /* the effects come with the preset, because for some of these the effect
+     * is the sound rather than a decoration on it */
+    const pd_fx_params_t &f = p->fx;
+    setRanged("cho_mix", (float)f.chorus_mix);
+    setRanged("cho_depth", (float)f.chorus_depth_ms);
+    setRanged("cho_rate", (float)f.chorus_rate_hz);
+    setRanged("cho_spread", (float)f.chorus_spread);
+    setRanged("dly_mix", (float)f.delay_mix);
+    setRanged("dly_time", (float)f.delay_time_s);
+    setRanged("dly_fb", (float)f.delay_feedback);
+    setRanged("dly_tone", (float)f.delay_tone);
+    set("drv_mode", (float)f.drive_mode / (float)(PD_DRIVE_MODES - 1));
+    setRanged("drv_amount", (float)f.drive_amount);
+
+}
+
+/* ---------------------------------------------------------------------------
+ * Casio CZ voice dumps.
+ * ------------------------------------------------------------------------ */
+static juce::String formatReport(const pd_sysex_report_t& r, const juce::String& lead)
+{
+    juce::String t = lead;
+    if (r.count == 0) { t << "\n\nNothing was lost on the way."; return t; }
+    t << "\n";
+    for (int i = 0; i < r.count; i++)
+        t << "\n" << juce::String(r.note[i].control) << ": "
+          << juce::String(r.note[i].what) << "\n";
+    if (r.dropped > 0)
+        t << "\nand " << r.dropped << " more.";
+    return t;
+}
+
+bool Processor::loadSysex(const juce::File& f, juce::String& report)
+{
+    juce::MemoryBlock mb;
+    if (!f.loadFileAsData(mb)) { report = "That file could not be read."; return false; }
+
+    pd_patch_t q {};
+    pd_sysex_report_t rep;
+    const int rc = pd_sysex_read_ex((const uint8_t*)mb.getData(), mb.getSize(),
+                                    &q, sysexBase, &rep);
+    if (rc != 0) {
+        report = rc == -2 ? "That is system exclusive, but not Casio's."
+               : rc == -3 ? "That is not a system exclusive message."
+               : rc == -4 ? "That looks like a Casio message with its data damaged."
+                          : "That is not a CZ voice dump. A dump is 263 or 264 bytes; "
+                            "this file is " + juce::String((int)mb.getSize()) + ".";
+        return false;
+    }
+    haveSysexBase = true;
+    applyPatch(q);
+    report = formatReport(rep, "Loaded " + f.getFileName() + ".");
+    return true;
+}
+
+bool Processor::saveSysex(const juce::File& f, juce::String& report)
+{
+    pullParameters();
+    uint8_t out[PD_SYSEX_BYTES];
+    pd_sysex_report_t rep;
+    const size_t n = pd_sysex_write_ex(&patch, haveSysexBase ? sysexBase : nullptr,
+                                       0, 0x60, out, sizeof out, &rep);
+    if (n == 0) { report = "The dump could not be written."; return false; }
+    if (!f.replaceWithData(out, n)) {
+        report = "That file could not be written.";
+        return false;
+    }
+    report = formatReport(rep, "Wrote " + f.getFileName()
+                               + ", " + juce::String((int)n) + " bytes.");
+    return true;
 }
 
 juce::AudioProcessorEditor* Processor::createEditor() { return new Editor(*this); }
