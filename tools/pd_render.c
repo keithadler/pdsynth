@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "pd_voice.h"
+#include "pd_presets.h"
 
 #define SR       48000.0
 #define POLYPHONY 8
@@ -165,19 +166,48 @@ static long render_demo(const demo_t *d, float *out, long cap)
     return total;
 }
 
+/* The whole factory bank, each preset playing the same phrase, so it can be
+ * listened through rather than read off a table. */
+static int render_bank(float *out, long cap, long *lengths)
+{
+    long n = 0;
+    for (int i = 0; i < pd_preset_count() && n < cap; i++) {
+        const pd_preset_t *pr = pd_preset(i);
+        poly_t poly;
+        poly_init(&poly, &pr->patch);
+        long total = (long)(PHRASE_SECONDS * SR);
+        if (n + total > cap) total = cap - n;
+        for (long k = 0; k < total; k++) {
+            for (int e = 0; e < PHRASE_COUNT; e++) {
+                if (k == (long)(kPhrase[e].at * SR)) poly_on(&poly, kPhrase[e].note, kPhrase[e].vel);
+                if (k == (long)((kPhrase[e].at + kPhrase[e].len) * SR)) poly_off(&poly, kPhrase[e].note);
+            }
+            out[n + k] = (float)poly_next(&poly);
+        }
+        fprintf(stderr, "  %2d. %-16s %s\n", i + 1, pr->name, pr->family);
+        n += total + (long)(0.35 * SR);
+        if (lengths) lengths[i] = total;
+    }
+    return (int)n;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 2) {
-        printf("usage: pd_render out.wav [demo name]\n  demos:");
+        printf("usage: pd_render out.wav [demo name | bank]\n  demos:");
         for (int i = 0; i < DEMO_COUNT; i++) printf(" %s%s", kDemos[i].name,
                                                     i + 1 < DEMO_COUNT ? "," : "\n");
         return 2;
     }
-    long cap = (long)(PHRASE_SECONDS * SR) * DEMO_COUNT + (long)SR * DEMO_COUNT;
+    const int units = pd_preset_count() > DEMO_COUNT ? pd_preset_count() : DEMO_COUNT;
+    long cap = (long)(PHRASE_SECONDS * SR) * units + (long)SR * units;
     float *buf = calloc((size_t)cap, sizeof *buf);
     if (!buf) return 1;
 
     long n = 0;
+    if (argc > 2 && strcmp(argv[2], "bank") == 0) {
+        n = render_bank(buf, cap, 0);
+    } else
     for (int i = 0; i < DEMO_COUNT; i++) {
         if (argc > 2 && strcmp(argv[2], kDemos[i].name) != 0) continue;
         printf("  %s\n", kDemos[i].name);

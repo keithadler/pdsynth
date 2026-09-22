@@ -111,6 +111,8 @@ Processor::Processor()
         set(i, 0, { 99, 99, 99, 0, 0, 0, 0, 0 }, { 50, 50, 50, 0, 0, 0, 0, 0 }, 0, 1);
     }
 
+    loadPreset(0);
+
     voices.resize(kPolyphony);
     for (auto& v : voices) pd_voice_init(&v, &patch, sr);
     for (auto& s : scope) s.store(0.0f);
@@ -239,6 +241,59 @@ void Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
     }
     scopePos.store(sp);
     levelNow.store(juce::jmax(pk, levelNow.load() * 0.82f));
+}
+
+void Processor::loadPreset(int index)
+{
+    const pd_preset_t *p = pd_preset(index);
+    if (!p) return;
+    currentPreset = index;
+
+    auto set = [&](const juce::String& id, float norm) {
+        if (auto* par = apvts.getParameter(id)) {
+            par->beginChangeGesture();
+            par->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, norm));
+            par->endChangeGesture();
+        }
+    };
+    auto setRanged = [&](const juce::String& id, float v) {
+        if (auto* par = apvts.getParameter(id)) {
+            if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(par)) {
+                rp->beginChangeGesture();
+                rp->setValueNotifyingHost(rp->convertTo0to1(v));
+                rp->endChangeGesture();
+            }
+        }
+    };
+
+    const pd_patch_t &q = p->patch;
+    set("lines", q.line_count == 2 ? 1.0f : 0.0f);
+    set("mix", (float)q.mix / 2.0f);
+    setRanged("noise", (float)q.noise_amount);
+    setRanged("vel_wave", (float)q.velocity_to_wave);
+    setRanged("vel_level", (float)q.velocity_to_level);
+    setRanged("bend_range", (float)q.bend_range_semitones);
+    setRanged("mod_wave", (float)q.mod_to_wave);
+
+    for (int i = 0; i < 2; i++) {
+        const pd_line_params_t &L = q.line[i];
+        set(Ids::line(i, "wave"), (float)L.wave / (float)(PD_WAVE_COUNT - 1));
+        setRanged(Ids::line(i, "octave"), (float)L.octave);
+        setRanged(Ids::line(i, "semis"), (float)L.semitones);
+        setRanged(Ids::line(i, "detune"), (float)L.detune_cents);
+        setRanged(Ids::line(i, "level"), (float)L.level);
+        setRanged(Ids::line(i, "pitch_depth"), (float)L.pitch_env_depth_semitones);
+
+        const pd_env_params_t *envs[3] = { &L.pitch_env, &L.wave_env, &L.amp_env };
+        for (int e = 0; e < 3; e++) {
+            for (int s2 = 0; s2 < PD_ENV_STEPS; s2++) {
+                setRanged(Ids::env(i, e, "rate", s2), (float)envs[e]->rate[s2]);
+                setRanged(Ids::env(i, e, "level", s2), (float)envs[e]->level[s2]);
+            }
+            setRanged(Ids::env(i, e, "sustain"), (float)envs[e]->sustain_step);
+            setRanged(Ids::env(i, e, "end"), (float)envs[e]->end_step);
+        }
+    }
 }
 
 juce::AudioProcessorEditor* Processor::createEditor() { return new Editor(*this); }

@@ -15,7 +15,8 @@ endif()
 add_library(pdcore STATIC
   src/pd_osc.c
   src/pd_env.c
-  src/pd_voice.c)
+  src/pd_voice.c
+  src/pd_presets.c)
 target_include_directories(pdcore PUBLIC src)
 target_compile_options(pdcore PRIVATE -Wall -Wextra)
 if(NOT WIN32)
@@ -24,6 +25,12 @@ endif()
 
 add_executable(pd_render tools/pd_render.c)
 target_link_libraries(pd_render PRIVATE pdcore)
+
+# Measures the factory bank: every preset sounds, answers the hand, and sits at
+# the level of its neighbours, or this fails.
+add_executable(pd_bankcheck tools/pd_bankcheck.c)
+target_link_libraries(pd_bankcheck PRIVATE pdcore)
+add_test(NAME bank COMMAND pd_bankcheck)
 
 enable_testing()
 foreach(t osc env voice)

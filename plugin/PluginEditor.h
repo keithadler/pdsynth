@@ -49,6 +49,8 @@ private:
 
     /* Text is set in the constructor: TextButton's String constructor is
      * explicit, so an array of them cannot be brace initialised from literals. */
+    juce::ComboBox   presetBox;
+    juce::TextButton prevPreset, nextPreset;
     juce::TextButton lineBtn[2];
     juce::TextButton twoLines;
     juce::TextButton envBtn[3];

@@ -94,6 +94,37 @@ Editor::Editor(Processor& p)
     selectEnv(1);
     refreshToggles();
 
+    /* The bank, grouped by family, because twenty eight names in one list is a
+     * list and twenty eight names in eight groups is a bank. */
+    {
+        juce::String family;
+        int id = 1;
+        for (int i = 0; i < pd_preset_count(); i++) {
+            const pd_preset_t* pr = pd_preset(i);
+            if (family != pr->family) {
+                family = pr->family;
+                presetBox.addSectionHeading(family);
+            }
+            presetBox.addItem(pr->name, id++);
+        }
+        presetBox.setSelectedId(1, juce::dontSendNotification);
+        presetBox.onChange = [this] {
+            const int idx = presetBox.getSelectedId() - 1;
+            if (idx >= 0) { proc.loadPreset(idx); refreshToggles(); repaint(); }
+        };
+        addAndMakeVisible(presetBox);
+        auto step = [this](int d) {
+            int n = juce::jlimit(1, pd_preset_count(), presetBox.getSelectedId() + d);
+            presetBox.setSelectedId(n, juce::sendNotificationSync);
+        };
+        prevPreset.setButtonText("<");
+        nextPreset.setButtonText(">");
+        prevPreset.onClick = [step] { step(-1); };
+        nextPreset.onClick = [step] { step(+1); };
+        addAndMakeVisible(prevPreset);
+        addAndMakeVisible(nextPreset);
+    }
+
     auto wheel = [&](juce::Slider& s, juce::Label& l, const char* name, juce::Colour c) {
         s.setSliderStyle(juce::Slider::LinearVertical);
         s.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
@@ -289,6 +320,17 @@ void Editor::resized()
         keyboard.setBounds(kb);
     }
     r.removeFromBottom(10);
+
+    /* the bank sits in the header, where a player looks first */
+    {
+        auto hdr = getLocalBounds().withHeight(58).withTrimmedLeft(300).withTrimmedRight(230);
+        auto bar = hdr.withSizeKeepingCentre(hdr.getWidth(), 26);
+        prevPreset.setBounds(bar.removeFromLeft(28));
+        bar.removeFromLeft(4);
+        nextPreset.setBounds(bar.removeFromRight(28));
+        bar.removeFromRight(4);
+        presetBox.setBounds(bar);
+    }
 
     r.removeFromTop(18);           // room for the "no filter" line
     auto left = r.removeFromLeft(268);

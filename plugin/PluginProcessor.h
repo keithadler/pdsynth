@@ -17,6 +17,7 @@
 
 extern "C" {
 #include "pd_voice.h"
+#include "pd_presets.h"
 }
 
 namespace pd
@@ -65,6 +66,11 @@ public:
     void setStateInformation(const void*, int) override;
 
     juce::AudioProcessorValueTreeState apvts;
+
+    /* Loading a preset writes the parameters, so the host sees a parameter
+     * change it can undo and automate rather than state swapped behind it. */
+    void loadPreset(int index);
+    int  currentPreset = 0;
 
     /* Notes played on the computer keyboard. They join the same MIDI stream the
      * host sends, so there is one path into the synth rather than two. */
