@@ -120,6 +120,17 @@ if(PDSYNTH_BUILD_PLUGIN)
     CLAP_ID "com.keithadler.pdsynth"
     CLAP_FEATURES instrument synthesizer)
 
+  juce_add_console_app(pd_buscheck PRODUCT_NAME "pd_buscheck")
+  target_sources(pd_buscheck PRIVATE tools/pd_buscheck.cpp
+    plugin/PluginProcessor.cpp plugin/PluginEditor.cpp
+    plugin/EnvelopeEditor.cpp plugin/WaveDisplay.cpp plugin/Theme.cpp)
+  target_compile_definitions(pd_buscheck PRIVATE
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_STANDALONE_APPLICATION=1
+    JucePlugin_Name="pdsynth" JucePlugin_IsSynth=1)
+  target_include_directories(pd_buscheck PRIVATE plugin)
+  target_link_libraries(pd_buscheck PRIVATE pdcore juce::juce_audio_utils
+    juce::juce_gui_basics juce::juce_dsp juce::juce_recommended_config_flags)
+
   # Draws the editor with no window, so it can be looked at rather than assumed
   juce_add_console_app(pd_uishot PRODUCT_NAME "pd_uishot")
   target_sources(pd_uishot PRIVATE

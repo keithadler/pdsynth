@@ -1,0 +1,84 @@
+name: release
+
+on:
+  push:
+    tags: [ "v*" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macos,   os: macos-latest,   asset: pdsynth-macos }
+          - { name: linux,   os: ubuntu-latest,  asset: pdsynth-linux-x86_64 }
+          - { name: windows, os: windows-latest, asset: pdsynth-windows-x64 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libjack-jackd2-dev \
+            libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev \
+            libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
+            libxrender-dev libglu1-mesa-dev mesa-common-dev
+
+      - name: Build
+        shell: bash
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release --parallel 4
+
+      - name: Stage
+        shell: bash
+        run: |
+          set -e
+          OUT="${{ matrix.asset }}"
+          mkdir -p "$OUT"
+          # everything JUCE produced, whatever the platform calls it
+          for pat in "*.vst3" "*.clap" "*.component" "*.lv2" "*.app" "pdsynth.exe"; do
+            find build -maxdepth 6 -name "$pat" -exec cp -R {} "$OUT/" \; 2>/dev/null || true
+          done
+          cp README.md COPYING "$OUT/"
+          cat > "$OUT/READ-ME-FIRST.txt" <<'TXT'
+          pdsynth - Casio CZ phase distortion
+
+          Copy the plugin for your host into wherever it looks:
+            .vst3       VST3 folder
+            .clap       CLAP folder
+            .component  AudioUnit components folder (macOS)
+            .lv2        LV2 folder (Linux)
+          The standalone runs on its own and publishes a MIDI port called
+          pdsynth, so anything that sends MIDI can play it.
+
+          There is no filter in the path unless you ask for one. The envelope on
+          the waveform is what opens and closes the sound, which is how a CZ
+          worked and why it needed no filter.
+
+          GPL-2.0-or-later. Source: https://github.com/keithadler/pdsynth
+          TXT
+
+      - name: Package
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            7z a "${{ matrix.asset }}.zip" "${{ matrix.asset }}"
+          else
+            tar czf "${{ matrix.asset }}.tar.gz" "${{ matrix.asset }}"
+          fi
+
+      - name: Upload to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ matrix.asset }}.tar.gz
+            ${{ matrix.asset }}.zip
+          fail_on_unmatched_files: false
