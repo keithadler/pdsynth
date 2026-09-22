@@ -166,6 +166,12 @@ static int render_bank(float *out, long cap, long *lengths)
         const pd_preset_t *pr = pd_preset(i);
         poly_t poly;
         poly_init(&poly, &pr->patch);
+        /* each preset through its own effects, which is how it is meant to be
+         * heard, and a fresh chain so one preset's repeats do not spill into
+         * the next one */
+        g_fxp = pr->fx;
+        pd_fx_destroy(g_fx);
+        g_fx = pd_fx_create(SR);
         long total = (long)(PHRASE_SECONDS * SR);
         if (n + total > cap) total = cap - n;
         for (long k = 0; k < total; k++) {

@@ -39,17 +39,34 @@ class Line:
                    min(1.0, self.level * gain), self.penv, self.pdepth,
                    self.wenv, self.aenv))
 
+DRIVE = dict(off=0, soft=1, hard=2, fold=3)
+
+class Fx:
+    """What a preset is meant to be heard through. Off is the default,
+    because an effect that is on everywhere is just a change of tone."""
+    def __init__(self, chorus=0.0, cho_depth=3.2, cho_rate=0.42, cho_spread=0.7,
+                 delay=0.0, dly_time=0.32, dly_fb=0.32, dly_tone=0.45,
+                 drive='off', drive_amt=0.3):
+        self.__dict__.update(locals()); del self.self
+    def c(self):
+        return ('{ %.3f, %.2f, %.3f, %.2f, %.3f, %.3f, %.3f, %.2f, %d, %.2f }'
+                % (self.chorus, self.cho_depth, self.cho_rate, self.cho_spread,
+                   self.delay, self.dly_time, self.dly_fb, self.dly_tone,
+                   DRIVE[self.drive], self.drive_amt))
+
 class Preset:
     def __init__(self, name, family, lines, count=1, mix='both', noise=0.0,
-                 velw=0.5, velv=0.8, bend=2.0, modw=0.3, gain=1.0):
+                 velw=0.5, velv=0.8, bend=2.0, modw=0.3, gain=1.0, fx=None):
         self.__dict__.update(locals()); del self.self
+        self.fx = fx or Fx()
         while len(self.lines) < 2:
             self.lines.append(Line('saw', level=0.0))
     def c(self):
-        return ('    { "%s", "%s", { { %s, %s }, %d, %d, %.3f, %.3f, %.3f, %.2f, %.3f } },'
+        return ('    { "%s", "%s", { { %s, %s }, %d, %d, %.3f, %.3f, %.3f, %.2f, %.3f }, %s },'
                 % (self.name, self.family, self.lines[0].c(self.gain),
                    self.lines[1].c(self.gain), self.count, MIX[self.mix],
-                   self.noise, self.velw, self.velv, self.bend, self.modw))
+                   self.noise, self.velw, self.velv, self.bend, self.modw,
+                   self.fx.c()))
 
 L = Line
 PRESETS = [
@@ -78,7 +95,7 @@ PRESETS = [
  Preset("Glass Tine", "Keys", [
    L('dsine', .66, -3, wenv=env([92,44,48],[72,26,0],1,2), aenv=env([94,38,46],[99,62,0],1,2)),
    L('rtri', .30, +3, semis=7, octave=1, wenv=env([99,86,64],[99,0,0],1,2), aenv=env([99,72,60],[99,8,0],1,2))],
-   2, velw=.95, velv=.8, gain=0.646),
+   2, velw=.95, velv=.8, gain=0.646, fx=Fx(chorus=0.30, cho_depth=2.4, cho_rate=0.38, delay=0.10, dly_time=0.24, dly_fb=0.18)),
  # Harpsichord: plucked, bright, and it rings, which is what separates it from
  # the clav.
  Preset("Harpsi", "Keys", [
@@ -90,7 +107,7 @@ PRESETS = [
  Preset("Synth Clav", "Keys", [
    L('sawpulse', .74, -2, wenv=env([99,66,60],[92,22,0],1,2), aenv=env([99,58,62],[99,34,0],1,2)),
    L('square', .34, +2, wenv=env([99,64,58],[78,18,0],1,2), aenv=env([99,56,60],[99,28,0],1,2))],
-   2, velw=.9, velv=.85, gain=0.86),
+   2, velw=.9, velv=.85, gain=0.86, fx=Fx(drive='soft', drive_amt=0.38)),
  # Fretless: the same bass with the bite taken off the front and a slow bloom
  # on the DCW instead, so the tone arrives after the note does.
  Preset("Fretless", "Bass", [
@@ -103,14 +120,14 @@ PRESETS = [
  Preset("Rubber Bass", "Bass", [
    L('saw', .80, -4, octave=-1, wenv=env([99,62,54],[99,14,0],1,2), aenv=env([95,40,56],[99,86,0],1,2)),
    L('rsaw', .42, +4, octave=-1, wenv=env([99,74,58],[92,6,0],1,2), aenv=env([97,52,58],[99,58,0],1,2))],
-   2, velw=.9, velv=.8, gain=0.366),
+   2, velw=.9, velv=.8, gain=0.366, fx=Fx(drive='soft', drive_amt=0.30)),
  # The strings nobody believed and everybody used. Two saws a fifth of a
  # semitone apart so they beat slowly, a slow swell, and a DCW that opens
  # gently and never quite closes.
  Preset("Digi Strings", "Strings", [
    L('saw', .58, -11, wenv=env([38,30,36],[78,44,0],1,2), aenv=env([44,40,42],[99,90,0],1,2)),
    L('saw', .54, +11, wenv=env([36,28,34],[74,40,0],1,2), aenv=env([42,38,40],[99,88,0],1,2))],
-   2, velw=.45, velv=.55, gain=0.56),
+   2, velw=.45, velv=.55, gain=0.56, fx=Fx(chorus=0.55, cho_depth=4.2, cho_rate=0.33, delay=0.14, dly_time=0.36, dly_fb=0.22)),
  # Pizzicato: the same two saws, but the DCA is gone in a quarter second and
  # the DCW with it.
  Preset("Pizzicato", "Pluck", [
@@ -129,7 +146,7 @@ PRESETS = [
  Preset("Brass Swell", "Brass", [
    L('saw', .58, -9, wenv=env([32,26,42],[99,86,0],1,2), aenv=env([58,42,48],[99,88,0],1,2)),
    L('saw', .52, +9, wenv=env([30,24,40],[95,82,0],1,2), aenv=env([56,40,46],[99,86,0],1,2))],
-   2, velw=.7, velv=.65, gain=0.538),
+   2, velw=.7, velv=.65, gain=0.538, fx=Fx(chorus=0.28, cho_depth=2.6, cho_rate=0.31)),
  # The breathy woodwind. Almost no harmonics, a soft attack, and noise shaking
  # the waveform rather than the level, which reads as air rather than as hiss
  # laid on top of a tone.
@@ -143,26 +160,26 @@ PRESETS = [
  # The same idea played fast, which is where it turns into a lead.
  Preset("Sweep Lead", "Lead", [
    L('rsaw', .74, 0, wenv=env([58,40,48],[99,26,0],1,2), aenv=env([92,50,56],[99,88,0],1,2))],
-   1, velw=.9, velv=.65, modw=.65, gain=0.84),
+   1, velw=.9, velv=.65, modw=.65, gain=0.84, fx=Fx(chorus=0.20, delay=0.20, dly_time=0.30, dly_fb=0.30, drive='soft', drive_amt=0.25)),
  # The sweep that sold the machine: a resonant saw whose formant climbs the
  # harmonic series while the pitch stays where it is. No filter is involved,
  # which people did not believe at the time.
  Preset("Formant Sweep", "Sweep", [
    L('rsaw', .70, -5, wenv=env([22,20,34],[99,8,0],1,2), aenv=env([70,44,48],[99,88,0],1,2)),
    L('rtrap', .38, +5, wenv=env([20,18,32],[92,6,0],1,2), aenv=env([68,42,46],[99,84,0],1,2))],
-   2, velw=.55, velv=.6, gain=0.66),
+   2, velw=.55, velv=.6, gain=0.66, fx=Fx(chorus=0.26, delay=0.18, dly_time=0.50, dly_fb=0.34, dly_tone=0.30)),
  # A bell that holds, which is a pad made out of a bell: the attack of one and
  # the sustain of the other.
  Preset("Bell Pad", "Pad", [
    L('rtri', .56, -6, wenv=env([72,30,36],[99,30,0],1,2), aenv=env([46,32,40],[99,76,0],1,2)),
    L('rtrap', .42, +6, wenv=env([68,28,34],[92,26,0],1,2), aenv=env([44,30,38],[99,72,0],1,2))],
-   2, velw=.7, velv=.65, gain=0.894),
+   2, velw=.7, velv=.65, gain=0.894, fx=Fx(chorus=0.42, cho_depth=5.0, cho_rate=0.22, delay=0.20, dly_time=0.44, dly_fb=0.30)),
  # Tubular bells: inharmonic by design. The second line sits a tritone away,
  # which is what stops a bell sounding like a note with a bright attack.
  Preset("Tubular", "Bell", [
    L('rtri', .64, 0, semis=6, wenv=env([78,40,44],[99,12,0],1,2), aenv=env([94,30,38],[99,26,0],1,2)),
    L('dsine', .40, 0, wenv=env([74,38,42],[82,10,0],1,2), aenv=env([94,28,36],[99,20,0],1,2))],
-   2, velw=.9, velv=.85, gain=0.74),
+   2, velw=.9, velv=.85, gain=0.74, fx=Fx(chorus=0.22, cho_depth=3.0, cho_rate=0.25, delay=0.22, dly_time=0.42, dly_fb=0.34)),
  # Marimba: wood rather than metal, so the bright part is brief and low order.
  Preset("Marimba", "Mallet", [
    L('dsine', .76, 0, wenv=env([94,40,34,60],[78,4,0,0],2,3), aenv=env([97,56,31,62],[99,42,0,0],2,3))],
@@ -172,20 +189,20 @@ PRESETS = [
  Preset("Steel Drum", "Mallet", [
    L('sawpulse', .70, -3, wenv=env([96,42,36,60],[99,3,0,0],2,3), aenv=env([98,62,33,60],[99,38,0,0],2,3)),
    L('rtri', .34, +3, semis=7, wenv=env([99,48,44,62],[92,0,0,0],2,3), aenv=env([99,78,52,58],[99,6,0,0],2,3))],
-   2, velw=.9, velv=.85, gain=1.000),
+   2, velw=.9, velv=.85, gain=1.000, fx=Fx(chorus=0.18, delay=0.16, dly_time=0.26, dly_fb=0.22)),
  # Vibes: a soft mallet, a partial two octaves up that dies immediately, and a
  # slow tremolo underneath, which on this machine is the amplitude envelope
  # rather than an LFO.
  Preset("Vibe Bar", "Mallet", [
    L('dsine', .72, -2, wenv=env([90,48,38,58],[72,4,0,0],2,3), aenv=env([94,50,27,58],[99,46,0,0],2,3)),
    L('rtri', .26, +2, octave=2, wenv=env([99,60,56,66],[92,0,0,0],2,3), aenv=env([99,66,44,62],[99,10,0,0],2,3))],
-   2, velw=.8, velv=.85, gain=1.000),
+   2, velw=.8, velv=.85, gain=1.000, fx=Fx(chorus=0.34, cho_depth=4.0, cho_rate=0.55)),
  # Voices: no attack to speak of, a narrow band of harmonics that stays put,
  # and enough detuning that it never quite settles.
  Preset("Choir Ah", "Vocal", [
    L('dsine', .60, -7, wenv=env([34,28,38],[56,34,0],1,2), aenv=env([44,40,44],[99,90,0],1,2)),
    L('dsine', .52, +7, wenv=env([32,26,36],[52,32,0],1,2), aenv=env([42,38,42],[99,86,0],1,2))],
-   2, mix='noise', noise=.10, velw=.35, velv=.5, gain=0.62),
+   2, mix='noise', noise=.10, velw=.35, velv=.5, gain=0.62, fx=Fx(chorus=0.50, cho_depth=5.5, cho_rate=0.19, delay=0.16, dly_time=0.40, dly_fb=0.24)),
  # The organ: no envelope worth the name in either direction, which is the
  # point. Everything else on this list is shaped; this one is a switch.
  Preset("Drawbar", "Organ", [

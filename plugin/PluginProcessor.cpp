@@ -405,6 +405,20 @@ void Processor::loadPreset(int index)
     setRanged("mod_wave", (float)q.mod_to_wave);
     setRanged("spread", (float)q.spread);
 
+    /* the effects come with the preset, because for some of these the effect
+     * is the sound rather than a decoration on it */
+    const pd_fx_params_t &f = p->fx;
+    setRanged("cho_mix", (float)f.chorus_mix);
+    setRanged("cho_depth", (float)f.chorus_depth_ms);
+    setRanged("cho_rate", (float)f.chorus_rate_hz);
+    setRanged("cho_spread", (float)f.chorus_spread);
+    setRanged("dly_mix", (float)f.delay_mix);
+    setRanged("dly_time", (float)f.delay_time_s);
+    setRanged("dly_fb", (float)f.delay_feedback);
+    setRanged("dly_tone", (float)f.delay_tone);
+    set("drv_mode", (float)f.drive_mode / (float)(PD_DRIVE_MODES - 1));
+    setRanged("drv_amount", (float)f.drive_amount);
+
     for (int i = 0; i < PD_MAX_LINES; i++) {
         const pd_line_params_t &L = q.line[i];
         set(Ids::line(i, "wave"), (float)L.wave / (float)(PD_WAVE_COUNT - 1));
