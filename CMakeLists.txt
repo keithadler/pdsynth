@@ -1,0 +1,20 @@
+cmake_minimum_required(VERSION 3.16)
+project(pdsynth C)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+add_compile_options(-Wall -Wextra)
+
+add_library(pdcore STATIC src/pd_osc.c)
+target_include_directories(pdcore PUBLIC src)
+if(NOT WIN32)
+  target_link_libraries(pdcore PUBLIC m)
+endif()
+
+enable_testing()
+add_executable(test_osc tests/test_osc.c)
+target_link_libraries(test_osc PRIVATE pdcore)
+add_test(NAME oscillator COMMAND test_osc)
