@@ -14,6 +14,10 @@
 #include <string.h>
 #include "pd_voice.h"
 
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 static int passed, failed;
 static void ok(int cond, const char *fmt, ...)
 {

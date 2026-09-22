@@ -36,6 +36,10 @@
 #include <string.h>
 #include "pd_presets.h"
 
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 #define SR 48000.0
 #define N  (int)(SR * 3)
 static double buf[N];

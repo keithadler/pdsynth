@@ -26,11 +26,11 @@ static void ok(int cond, const char *fmt, ...)
     if (cond) { passed++; return; }
     failed++;
     va_list ap;
-    __builtin_va_start(ap, fmt);
+    va_start(ap, fmt);
     printf("  FAIL: ");
     vprintf(fmt, ap);
     printf("\n");
-    __builtin_va_end(ap);
+    va_end(ap);
 }
 
 /*

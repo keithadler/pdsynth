@@ -26,6 +26,9 @@ target_include_directories(pdcore PUBLIC src)
 # numeric argument and refuses to compile at all, which is what the first CI
 # run on Windows found within a minute of existing.
 if(MSVC)
+  # MSVC leaves M_PI out unless asked, and it is not in the C standard, so
+  # every file that wants it says so as well.
+  add_compile_definitions(_USE_MATH_DEFINES)
   target_compile_options(pdcore PRIVATE /W3)
 else()
   target_compile_options(pdcore PRIVATE -Wall -Wextra)
