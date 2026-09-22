@@ -45,6 +45,15 @@ private:
     Processor& proc;
     LookAndFeel lnf;
 
+    /*
+     * The left column holds more than a short window can show. Rather than
+     * letting the bottom of it fall off the edge, where the filter and the mix
+     * become unreachable, it lives in a viewport and scrolls. A control you
+     * cannot get to is worse than one you have to scroll to.
+     */
+    juce::Component  leftHolder;
+    juce::Viewport   leftView;
+
     int currentLine = 0, currentEnv = 1;
 
     /* Text is set in the constructor: TextButton's String constructor is

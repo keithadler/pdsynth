@@ -15,10 +15,15 @@ Editor::Editor(Processor& p)
 {
     setLookAndFeel(&lnf);
 
+    leftView.setViewedComponent(&leftHolder, false);
+    leftView.setScrollBarsShown(true, false, true, false);
+    leftView.setScrollBarThickness(8);
+    addAndMakeVisible(leftView);
+
     auto addBtn = [&](juce::TextButton& b, const char* label) {
         b.setButtonText(label);
         b.setClickingTogglesState(false);
-        addAndMakeVisible(b);
+        leftHolder.addAndMakeVisible(b);
     };
     const char* kLineNames[PD_MAX_LINES] = { "LINE 1", "LINE 2", "LINE 3", "LINE 4" };
     const char* kEnvLabels[3] = { "PITCH", "WAVEFORM", "AMPLITUDE" };
@@ -66,16 +71,16 @@ Editor::Editor(Processor& p)
     }
 
     auto knob = [&](juce::Slider& s, juce::Label& l, const char* name, juce::Colour c,
-                    int decimals = 2, const char* suffix = "") {
+                    bool left = true, int decimals = 2, const char* suffix = "") {
         s.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
         s.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 64, 15);
         juce::ignoreUnused(decimals, suffix);   // the parameter formats itself
         s.setColour(juce::Slider::rotarySliderFillColourId, c);
-        addAndMakeVisible(s);
+        (left ? leftHolder : *this).addAndMakeVisible(s);
         l.setText(name, juce::dontSendNotification);
         l.setJustificationType(juce::Justification::centred);
         l.setFont(Theme::label(10.5f));
-        addAndMakeVisible(l);
+        (left ? leftHolder : *this).addAndMakeVisible(l);
     };
     knob(detune,     detuneL,     "DETUNE",    Theme::lineOne);
     knob(level,      levelL,      "LEVEL",     Theme::lineOne);
@@ -88,13 +93,13 @@ Editor::Editor(Processor& p)
     knob(cutoff,     cutoffL,     "CUTOFF",    Theme::accent);
     knob(resonance,  resonanceL,  "RESONANCE", Theme::accent);
     knob(filtEnv,    filtEnvL,    "DCW>CUTOFF",Theme::accent);
-    knob(choMix,     choMixL,     "CHORUS",    Theme::lineTwo);
-    knob(choDepth,   choDepthL,   "DEPTH",     Theme::lineTwo);
-    knob(choRate,    choRateL,    "RATE",      Theme::lineTwo);
-    knob(dlyMix,     dlyMixL,     "DELAY",     Theme::lineOne);
-    knob(dlyTime,    dlyTimeL,    "TIME",      Theme::lineOne);
-    knob(dlyFb,      dlyFbL,      "FEEDBACK",  Theme::lineOne);
-    knob(drvAmount,  drvAmountL,  "DRIVE",     Theme::accent);
+    knob(choMix,     choMixL,     "CHORUS",    Theme::lineTwo, false);
+    knob(choDepth,   choDepthL,   "DEPTH",     Theme::lineTwo, false);
+    knob(choRate,    choRateL,    "RATE",      Theme::lineTwo, false);
+    knob(dlyMix,     dlyMixL,     "DELAY",     Theme::lineOne, false);
+    knob(dlyTime,    dlyTimeL,    "TIME",      Theme::lineOne, false);
+    knob(dlyFb,      dlyFbL,      "FEEDBACK",  Theme::lineOne, false);
+    knob(drvAmount,  drvAmountL,  "DRIVE",     Theme::accent,  false);
 
     for (int i = 0; i < PD_DRIVE_MODES; i++)
         driveBox.addItem(juce::String(pd_drive_mode_name((pd_drive_mode_t)i)).toUpperCase(), i + 1);
@@ -105,11 +110,11 @@ Editor::Editor(Processor& p)
 
     for (int i = 0; i < PD_FILTER_MODES; i++)
         filterBox.addItem(juce::String(pd_filter_mode_name((pd_filter_mode_t)i)).toUpperCase(), i + 1);
-    addAndMakeVisible(filterBox);
+    leftHolder.addAndMakeVisible(filterBox);
     filterL.setText("FILTER", juce::dontSendNotification);
     filterL.setFont(Theme::label(10.5f));
     filterL.setJustificationType(juce::Justification::centredLeft);
-    addAndMakeVisible(filterL);
+    leftHolder.addAndMakeVisible(filterL);
 
     addAndMakeVisible(envEditor);
     for (auto& w : waveView) addAndMakeVisible(w);
@@ -210,9 +215,30 @@ Editor::Editor(Processor& p)
     kbState.addListener(this);
 
     setWantsKeyboardFocus(true);
-    setSize(kW, kH);
     setResizable(true, true);
-    setResizeLimits(980, 820, 1800, 1400);
+    /*
+     * The minimum has to fit the smallest screen anyone still uses. A 1366 by
+     * 768 laptop has about 708 pixels of usable height once the menu bar and
+     * the taskbar are gone, so a window that insists on 820 is taller than the
+     * screen, and a window taller than the screen has its title bar pushed off
+     * the top with no way to reach it. That is exactly what was reported, and
+     * it was introduced by growing the window to fit the effects.
+     */
+    /* 640 rather than 560: a 1366 by 768 laptop has about 708 usable, so this
+     * fits with room, and below it the knobs collapse to something nobody can
+     * grab and the filter row falls off the bottom. A window that fits but
+     * cannot be used is not a fix. */
+    setResizeLimits(880, 640, 2200, 1600);
+
+    /* Open at the intended size, or at whatever the display can actually show,
+     * whichever is smaller. */
+    int w = kW, h = kH;
+    if (auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()) {
+        const auto area = d->userArea;
+        w = juce::jmin(w, area.getWidth()  - 40);
+        h = juce::jmin(h, area.getHeight() - 60);
+    }
+    setSize(juce::jmax(880, w), juce::jmax(560, h));
     startTimerHz(30);
 }
 
@@ -353,8 +379,11 @@ void Editor::resized()
     r.removeFromTop(58);
     r.reduce(20, 14);
 
-    /* the keyboard sits along the bottom, the width of the window */
-    auto bottom = r.removeFromBottom(96);
+    /* The keyboard sits along the bottom and gives up height first when the
+     * window is short, because two octaves of smaller keys is a better trade
+     * than an envelope editor nobody can see. */
+    const int kbH = juce::jlimit(54, 96, r.getHeight() / 6);
+    auto bottom = r.removeFromBottom(kbH);
     auto wheels = bottom.removeFromLeft(86);
     auto bw = wheels.removeFromLeft(42);
     bendWheelL.setBounds(bw.removeFromBottom(13));
@@ -386,8 +415,24 @@ void Editor::resized()
     }
 
     r.removeFromTop(18);           // room for the "no filter" line
-    auto left = r.removeFromLeft(268);
+
+    /*
+     * The column is laid out at the height it needs, not the height available,
+     * and the viewport shows as much of it as fits. Everything stays reachable
+     * at any window size.
+     */
+    const int kLeftW = 268;
+    auto leftArea = r.removeFromLeft(kLeftW);
     r.removeFromLeft(18);
+    const int naturalH = 26 + 5 + 26 + 12      /* the two line rows */
+                       + 4 * 34 + 14           /* the waveform grid */
+                       + 2 * 61 + 8 + 61       /* three knob rows */
+                       + 10 + 24 + 6 + 61      /* filter row and its knobs */
+                       + 12 + 28;              /* the mix row */
+    leftView.setBounds(leftArea);
+    const bool scrolls = naturalH > leftArea.getHeight();
+    leftHolder.setBounds(0, 0, kLeftW - (scrolls ? 10 : 0), juce::jmax(naturalH, leftArea.getHeight()));
+    auto left = leftHolder.getLocalBounds();
     auto right = r.removeFromRight(292);
     r.removeFromRight(18);
 
@@ -407,12 +452,13 @@ void Editor::resized()
     }
     left.removeFromTop(4 * 34 + 14);
 
-    auto knobs = left.removeFromTop(150);
+    auto knobs = left.removeFromTop(122);
     auto place = [&](juce::Slider& s, juce::Label& l, juce::Rectangle<int> cell) {
         l.setBounds(cell.removeFromTop(14));
         s.setBounds(cell);
     };
-    auto rowA = knobs.removeFromTop(75);
+    const int knobRow = 61;
+    auto rowA = knobs.removeFromTop(knobRow);
     place(detune,     detuneL,     rowA.removeFromLeft(89));
     place(level,      levelL,      rowA.removeFromLeft(89));
     place(pitchDepth, pitchDepthL, rowA);
@@ -422,7 +468,7 @@ void Editor::resized()
     place(velLevel, velLevelL, rowB);
 
     left.removeFromTop(8);
-    auto rowC = left.removeFromTop(75);
+    auto rowC = left.removeFromTop(knobRow);
     place(glide,     glideL,     rowC.removeFromLeft(89));
     place(atWave,    atWaveL,    rowC.removeFromLeft(89));
     place(filtEnv,   filtEnvL,   rowC);
@@ -432,11 +478,11 @@ void Editor::resized()
     filterL.setBounds(fRow.removeFromLeft(48));
     filterBox.setBounds(fRow);
     left.removeFromTop(6);
-    auto rowD = left.removeFromTop(75);
+    auto rowD = left.removeFromTop(knobRow);
     place(cutoff,    cutoffL,    rowD.removeFromLeft(89));
     place(resonance, resonanceL, rowD.removeFromLeft(89));
 
-    left.removeFromTop(juce::jmax(14, left.getHeight() - 42));
+    left.removeFromTop(12);
     auto mixRow = left.removeFromTop(28);
     for (int i = 0; i < 3; i++) {
         mixBtn[i].setBounds(mixRow.removeFromLeft(84));
@@ -455,18 +501,21 @@ void Editor::resized()
     // right: what it is doing
     /* the effects live under the meters, across the right column */
     {
-        auto fxArea = right.removeFromBottom(168);
+        /* the effects give up their second row before the meters do */
+        const int fxH = juce::jlimit(78, 168, right.getHeight() / 3);
+        auto fxArea = right.removeFromBottom(fxH);
         auto place2 = [&](juce::Slider& s2, juce::Label& l2, juce::Rectangle<int> cell) {
             l2.setBounds(cell.removeFromTop(13));
             s2.setBounds(cell);
         };
-        auto r1 = fxArea.removeFromTop(74);
+        const int fxRow = juce::jmax(36, (fxArea.getHeight() - 4) / 2);
+        auto r1 = fxArea.removeFromTop(fxRow);
         place2(choMix,  choMixL,  r1.removeFromLeft(72));
         place2(choDepth,choDepthL,r1.removeFromLeft(72));
         place2(choRate, choRateL, r1.removeFromLeft(72));
         place2(drvAmount, drvAmountL, r1);
         fxArea.removeFromTop(4);
-        auto r2 = fxArea.removeFromTop(74);
+        auto r2 = fxArea.removeFromTop(fxRow);
         place2(dlyMix,  dlyMixL,  r2.removeFromLeft(72));
         place2(dlyTime, dlyTimeL, r2.removeFromLeft(72));
         place2(dlyFb,   dlyFbL,   r2.removeFromLeft(72));
