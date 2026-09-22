@@ -113,7 +113,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout Processor::layout()
 }
 
 Processor::Processor()
-    : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
+    /*
+     * A second output bus carrying pitch, gate and velocity as control
+     * voltages, for driving a modular rig from whatever is playing this. It is
+     * disabled by default, because a host that routes it to speakers by
+     * mistake plays a loud steady tone at whatever the last note was.
+     */
+    : AudioProcessor(BusesProperties()
+          .withOutput("Output", juce::AudioChannelSet::stereo(), true)
+          .withOutput("CV", juce::AudioChannelSet::discreteChannels(3), false)),
       apvts(*this, nullptr, "pdsynth", layout())
 {
     pd_patch_init(&patch);
@@ -173,8 +181,14 @@ void Processor::prepareToPlay(double sampleRate, int)
 
 bool Processor::isBusesLayoutSupported(const BusesLayout& l) const
 {
-    auto out = l.getMainOutputChannelSet();
-    return out == juce::AudioChannelSet::stereo() || out == juce::AudioChannelSet::mono();
+    const auto out = l.getMainOutputChannelSet();
+    if (out != juce::AudioChannelSet::stereo() && out != juce::AudioChannelSet::mono())
+        return false;
+    if (l.outputBuses.size() > 1) {
+        const auto cvBus = l.getChannelSet(false, 1);
+        if (!cvBus.isDisabled() && cvBus.size() != 3) return false;
+    }
+    return true;
 }
 
 void Processor::pullParameters()
@@ -250,8 +264,10 @@ void Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
         const auto m = meta.getMessage();
         if (m.isNoteOn()) {
             pd_synth_note_on(&synth, m.getNoteNumber(), m.getVelocity() / 127.0);
+            pd_cv_note_on(&cv, m.getNoteNumber(), m.getVelocity() / 127.0);
         } else if (m.isNoteOff()) {
             pd_synth_note_off(&synth, m.getNoteNumber());
+            pd_cv_note_off(&cv, m.getNoteNumber());
         } else if (m.isPitchWheel()) {
             /* 0 to 16383 with 8192 at rest, which is the only place the
              * asymmetry of the MIDI wheel needs handling */
@@ -266,9 +282,24 @@ void Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
             pd_synth_set_mod(&synth, wheelMod);
         } else if (m.isAllNotesOff() || m.isAllSoundOff()) {
             pd_synth_all_off(&synth);
+            pd_cv_all_off(&cv);
         }
     }
     for (; pos < n; pos++) emit(pos);
+
+    /* The control voltages, if the host asked for that bus. The pitch follows
+     * the sounding frequency rather than the note number, so a glide or a bend
+     * leaves by the same wire the note did. */
+    if (getBusCount(false) > 1) {
+        if (auto cvBuf = getBusBuffer(buffer, false, 1); cvBuf.getNumChannels() >= 3) {
+            if (synth.voice_count > 0 && synth.voice[0].base_hz > 0.0)
+                pd_cv_track_hz(&cv, synth.voice[0].base_hz);
+            for (int ch = 0; ch < 3; ch++) {
+                const float v = (float)(ch == 0 ? cv.pitch : ch == 1 ? cv.gate : cv.velocity);
+                for (int i = 0; i < n; i++) cvBuf.setSample(ch, i, v);
+            }
+        }
+    }
 
     /* what the editor draws */
     int live = 0;

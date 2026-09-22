@@ -18,10 +18,18 @@ add_library(pdcore STATIC
   src/pd_voice.c
   src/pd_os.c
   src/pd_filter.c
+  src/pd_cv.c
   src/pd_synth.c
   src/pd_presets.c)
 target_include_directories(pdcore PUBLIC src)
-target_compile_options(pdcore PRIVATE -Wall -Wextra)
+# -Wall and -Wextra are GCC and Clang spellings. MSVC reads -Wextra as a
+# numeric argument and refuses to compile at all, which is what the first CI
+# run on Windows found within a minute of existing.
+if(MSVC)
+  target_compile_options(pdcore PRIVATE /W3)
+else()
+  target_compile_options(pdcore PRIVATE -Wall -Wextra)
+endif()
 if(NOT WIN32)
   target_link_libraries(pdcore PUBLIC m)
 endif()
@@ -43,7 +51,7 @@ target_link_libraries(pd_character PRIVATE pdcore)
 add_test(NAME character COMMAND pd_character)
 
 enable_testing()
-foreach(t osc env voice extras)
+foreach(t osc env voice extras cv)
   add_executable(test_${t} tests/test_${t}.c)
   target_link_libraries(test_${t} PRIVATE pdcore)
   add_test(NAME ${t} COMMAND test_${t})
