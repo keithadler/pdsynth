@@ -48,6 +48,173 @@ static void env_set(pd_env_params_t *e, const int *rate, const int *level,
     e->end_step     = (uint8_t)end;
 }
 
+
+/* ---------------------------------------------------------------------------
+ * Playing a standard MIDI file.
+ *
+ * Enough of the format to play one: the tracks are merged into one list of
+ * events by absolute tick, the tempo map is followed as it is walked, and
+ * everything that is not a note is ignored. A renderer that can only play a
+ * phrase built into itself cannot be listened to for longer than a phrase.
+ * ------------------------------------------------------------------------ */
+
+typedef struct { long at; unsigned char kind, note, vel; } mev_t;
+
+static unsigned long read_var(const unsigned char *b, long *i, long end)
+{
+    unsigned long v = 0;
+    while (*i < end) {
+        const unsigned char c = b[(*i)++];
+        v = (v << 7) | (c & 0x7f);
+        if (!(c & 0x80)) break;
+    }
+    return v;
+}
+static unsigned long be32(const unsigned char *b)
+{
+    return ((unsigned long)b[0] << 24) | ((unsigned long)b[1] << 16)
+         | ((unsigned long)b[2] << 8) | b[3];
+}
+static int cmp_mev(const void *a, const void *b)
+{
+    const mev_t *x = (const mev_t *)a, *y = (const mev_t *)b;
+    if (x->at != y->at) return x->at < y->at ? -1 : 1;
+    /* note offs before note ons at the same instant, so a repeated note
+     * retriggers rather than being cut off by its own predecessor */
+    return (int)x->kind - (int)y->kind;
+}
+
+/* Returns the number of events, or -1. Times come back in samples. */
+static long midi_load(const char *path, mev_t **out)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f) { fprintf(stderr, "cannot open %s\n", path); return -1; }
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    unsigned char *d = (unsigned char *)malloc((size_t)len);
+    if (!d || fread(d, 1, (size_t)len, f) != (size_t)len) { fclose(f); free(d); return -1; }
+    fclose(f);
+
+    if (len < 14 || memcmp(d, "MThd", 4) != 0) { free(d); fprintf(stderr, "not a MIDI file\n"); return -1; }
+    const int division = (d[12] << 8) | d[13];
+    if (division & 0x8000) { free(d); fprintf(stderr, "SMPTE timing not supported\n"); return -1; }
+
+    long cap = 4096, n = 0;
+    mev_t *ev = (mev_t *)malloc((size_t)cap * sizeof *ev);
+    /* tempo changes, kept as (tick, microseconds per beat) */
+    long tcap = 256, tn = 0;
+    long *tt = (long *)malloc((size_t)tcap * sizeof *tt);
+    long *tv = (long *)malloc((size_t)tcap * sizeof *tv);
+
+    long p = 14;
+    while (p + 8 <= len) {
+        const int is_track = memcmp(d + p, "MTrk", 4) == 0;
+        const long clen = (long)be32(d + p + 4);
+        long q = p + 8, end = q + clen;
+        p = end;
+        if (!is_track || end > len) continue;
+
+        long tick = 0;
+        unsigned char running = 0;
+        while (q < end) {
+            tick += (long)read_var(d, &q, end);
+            if (q >= end) break;
+            unsigned char st = d[q];
+            if (st & 0x80) { q++; if (st < 0xf0) running = st; }
+            else st = running;
+
+            if (st == 0xff) {
+                const unsigned char meta = d[q++];
+                const long mlen = (long)read_var(d, &q, end);
+                if (meta == 0x51 && mlen == 3) {
+                    if (tn == tcap) {
+                        tcap *= 2;
+                        tt = (long *)realloc(tt, (size_t)tcap * sizeof *tt);
+                        tv = (long *)realloc(tv, (size_t)tcap * sizeof *tv);
+                    }
+                    tt[tn] = tick;
+                    tv[tn] = ((long)d[q] << 16) | ((long)d[q+1] << 8) | d[q+2];
+                    tn++;
+                }
+                q += mlen;
+            } else if (st == 0xf0 || st == 0xf7) {
+                const long mlen = (long)read_var(d, &q, end);
+                q += mlen;
+            } else {
+                const int hi = st & 0xf0;
+                const int nbytes = (hi == 0xc0 || hi == 0xd0) ? 1 : 2;
+                if (hi == 0x90 || hi == 0x80) {
+                    if (n == cap) { cap *= 2; ev = (mev_t *)realloc(ev, (size_t)cap * sizeof *ev); }
+                    const unsigned char note = d[q], vel = (nbytes > 1) ? d[q+1] : 0;
+                    ev[n].at = tick;
+                    ev[n].note = note;
+                    ev[n].vel = vel;
+                    /* a note on with no velocity is a note off, which is how
+                     * most files spell it */
+                    ev[n].kind = (hi == 0x90 && vel > 0) ? 1 : 0;
+                    n++;
+                }
+                q += nbytes;
+            }
+        }
+    }
+    free(d);
+    qsort(ev, (size_t)n, sizeof *ev, cmp_mev);
+
+    /* ticks to samples, following the tempo map as it is walked */
+    long ti = 0;
+    double usec_per_beat = 500000.0;   /* 120 bpm until told otherwise */
+    long last_tick = 0;
+    double seconds = 0.0;
+    for (long i = 0; i < n; i++) {
+        while (ti < tn && tt[ti] <= ev[i].at) {
+            seconds += (double)(tt[ti] - last_tick) * usec_per_beat / division / 1e6;
+            last_tick = tt[ti];
+            usec_per_beat = (double)tv[ti];
+            ti++;
+        }
+        seconds += (double)(ev[i].at - last_tick) * usec_per_beat / division / 1e6;
+        last_tick = ev[i].at;
+        ev[i].at = (long)(seconds * SR);
+    }
+    free(tt); free(tv);
+    *out = ev;
+    return n;
+}
+
+static long render_midi(const char *path, const pd_preset_t *pr, float *out, long cap)
+{
+    mev_t *ev = 0;
+    const long n = midi_load(path, &ev);
+    if (n <= 0) { free(ev); if (n == 0) fprintf(stderr, "no notes in %s\n", path); return 0; }
+
+    poly_t poly;
+    poly_init(&poly, &pr->patch);
+    g_fxp = pr->fx;
+    pd_fx_destroy(g_fx);
+    g_fx = pd_fx_create(SR);
+
+    const long tail = (long)(3.0 * SR);
+    long total = ev[n - 1].at + tail;
+    if (total > cap) total = cap;
+
+    long e = 0;
+    for (long i = 0; i < total; i++) {
+        while (e < n && ev[e].at <= i) {
+            if (ev[e].kind) poly_on(&poly, ev[e].note, ev[e].vel / 127.0);
+            else            poly_off(&poly, ev[e].note);
+            e++;
+        }
+        double l, r;
+        poly_next2(&poly, &l, &r);
+        out[i] = (float)(0.5 * (l + r));
+    }
+    free(ev);
+    fprintf(stderr, "  %ld events, %.1f seconds\n", n, total / SR);
+    return total;
+}
+
 typedef struct { const char *name; void (*build)(pd_patch_t *); } demo_t;
 
 /* 1. the sweep a CZ is known for, with no filter anywhere in the path */
@@ -190,8 +357,56 @@ static int render_bank(float *out, long cap, long *lengths)
 
 int main(int argc, char **argv)
 {
+    if (argc >= 4 && strcmp(argv[2], "--midi") == 0) {
+        /* pd_render out.wav --midi song.mid [preset name] */
+        const char *want = (argc > 4) ? argv[4] : "Digi Strings";
+        const pd_preset_t *pr = 0;
+        for (int i = 0; i < pd_preset_count(); i++)
+            if (strcmp(pd_preset(i)->name, want) == 0) pr = pd_preset(i);
+        if (!pr) { printf("no preset called \"%s\"\n", want); return 2; }
+
+        long cap2 = (long)(SR * 900);
+        float *buf2 = (float *)calloc((size_t)cap2, sizeof *buf2);
+        if (!buf2) return 1;
+        pd_fx_params_init(&g_fxp);
+        fprintf(stderr, "%s, played on \"%s\"\n", argv[3], pr->name);
+        long n2 = render_midi(argv[3], pr, buf2, cap2);
+        if (n2 <= 0) { free(buf2); return 1; }
+
+        double pk2 = 0;
+        for (long i = 0; i < n2; i++) if (fabs(buf2[i]) > pk2) pk2 = fabs(buf2[i]);
+        const double g2 = pk2 > 0 ? 0.89 / pk2 : 1.0;
+        FILE *fp = fopen(argv[1], "wb");
+        if (!fp) { free(buf2); return 1; }
+        long bytes2 = n2 * 2;
+        fwrite("RIFF", 1, 4, fp);
+        uint32_t v = (uint32_t)(36 + bytes2); fwrite(&v, 4, 1, fp);
+        fwrite("WAVEfmt ", 1, 8, fp);
+        v = 16; fwrite(&v, 4, 1, fp);
+        uint16_t w = 1; fwrite(&w, 2, 1, fp);
+        w = 1; fwrite(&w, 2, 1, fp);
+        v = (uint32_t)SR; fwrite(&v, 4, 1, fp);
+        v = (uint32_t)SR * 2; fwrite(&v, 4, 1, fp);
+        w = 2; fwrite(&w, 2, 1, fp);
+        w = 16; fwrite(&w, 2, 1, fp);
+        fwrite("data", 1, 4, fp);
+        v = (uint32_t)bytes2; fwrite(&v, 4, 1, fp);
+        for (long i = 0; i < n2; i++) {
+            double s2 = buf2[i] * g2 * 32767.0;
+            if (s2 > 32767) s2 = 32767;
+            if (s2 < -32768) s2 = -32768;
+            int16_t iv = (int16_t)lrint(s2);
+            fwrite(&iv, 2, 1, fp);
+        }
+        fclose(fp);
+        printf("wrote %s (%.1f s)\n", argv[1], n2 / SR);
+        pd_fx_destroy(g_fx);
+        free(buf2);
+        return 0;
+    }
+
     if (argc < 2) {
-        printf("usage: pd_render out.wav [demo name | bank]\n  demos:");
+        printf("usage: pd_render out.wav [demo name | bank | --midi song.mid [preset]]\n  demos:");
         for (int i = 0; i < DEMO_COUNT; i++) printf(" %s%s", kDemos[i].name,
                                                     i + 1 < DEMO_COUNT ? "," : "\n");
         return 2;
