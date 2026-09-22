@@ -107,6 +107,17 @@ private:
     juce::Slider bendWheel, modWheel;
     juce::Label  bendWheelL, modWheelL;
 
+    /*
+     * What a full wheel is worth. Both of these were parameters a host could
+     * automate from the first release and neither was ever drawn, so from the
+     * window they may as well not have existed: the wheels moved and nothing
+     * said how far. Reaper10 asked for the number box the trackers put beside
+     * a bend wheel, which is the right shape for it.
+     */
+    juce::Slider bendRange, modDepth;
+    juce::Label  bendRangeL, modDepthL;
+    std::unique_ptr<SA> aBendRange, aModDepth;
+
     juce::MidiKeyboardState      kbState;
     juce::MidiKeyboardComponent  keyboard { kbState, juce::MidiKeyboardComponent::horizontalKeyboard };
 

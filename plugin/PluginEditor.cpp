@@ -124,6 +124,10 @@ Editor::Editor(Processor& p)
     aVelWave  = std::make_unique<SA>(proc.apvts, "vel_wave", velWave);
     aVelLevel = std::make_unique<SA>(proc.apvts, "vel_level", velLevel);
     aGlide    = std::make_unique<SA>(proc.apvts, "glide", glide);
+    /* These two belong to the instrument, not to a line, so they are attached
+     * once rather than re-attached whenever the line selection changes. */
+    aBendRange = std::make_unique<SA>(proc.apvts, "bend_range", bendRange);
+    aModDepth  = std::make_unique<SA>(proc.apvts, "mod_wave", modDepth);
     aAtWave   = std::make_unique<SA>(proc.apvts, "at_wave", atWave);
     aCutoff   = std::make_unique<SA>(proc.apvts, "filt_cutoff", cutoff);
     aRes      = std::make_unique<SA>(proc.apvts, "filt_res", resonance);
@@ -196,6 +200,17 @@ Editor::Editor(Processor& p)
     wheel(bendWheel, bendWheelL, "BEND", Theme::lineOne);
     wheel(modWheel,  modWheelL,  "MOD",  Theme::accent);
     modWheel.setRange(0.0, 1.0, 0.0);
+    /*
+     * A number under each wheel saying what a full throw of it is worth,
+     * draggable like the boxes trackers put there. Both were parameters with
+     * nothing drawn for them, so the wheels moved and the window never said
+     * how far.
+     */
+    knob(bendRange, bendRangeL, "BEND RANGE", Theme::lineOne);
+    knob(modDepth,  modDepthL,   "MOD>WAVE",   Theme::accent);
+    bendRange.setTooltip("How far a full bend wheel moves the pitch");
+    modDepth.setTooltip("How far a full mod wheel opens the waveform");
+
     bendWheel.setValue(0.0, juce::dontSendNotification);
     bendWheel.onValueChange = [this] {
         const int v = juce::jlimit(0, 16383, (int)std::lround(bendWheel.getValue() * 8192.0) + 8192);
@@ -444,6 +459,7 @@ void Editor::resized()
     const int naturalH = 26 + 5 + 26 + 12      /* the two line rows */
                        + 4 * 34 + 14           /* the waveform grid */
                        + 2 * 61 + 8 + 61       /* three knob rows */
+                       + 8 + 61                /* what the wheels are worth */
                        + 10 + 24 + 6 + 61      /* filter row and its knobs */
                        + 12 + 28;              /* the mix row */
     leftView.setBounds(leftArea);
@@ -489,6 +505,14 @@ void Editor::resized()
     place(glide,     glideL,     rowC.removeFromLeft(89));
     place(atWave,    atWaveL,    rowC.removeFromLeft(89));
     place(filtEnv,   filtEnvL,   rowC);
+
+    /* What the two wheels are worth. They sit with the other per instrument
+     * controls rather than crammed under the wheels themselves, where a knob
+     * and a wheel stacked together would not fit the short window. */
+    left.removeFromTop(8);
+    auto rowW = left.removeFromTop(knobRow);
+    place(bendRange, bendRangeL, rowW.removeFromLeft(89));
+    place(modDepth,  modDepthL,  rowW.removeFromLeft(89));
 
     left.removeFromTop(10);
     auto fRow = left.removeFromTop(24);

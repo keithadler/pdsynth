@@ -273,6 +273,10 @@ int pd_sysex_read_ex(const uint8_t *in, size_t len, pd_patch_t *out,
         note(report, "Key follow",
              "Key follow on the level and the waveform is in the dump but has "
              "no control here yet, so it is not read.");
+    note(report, "Bend range",
+         "A voice dump does not carry a bend range; a CZ keeps that per machine "
+         "rather than per voice. It is set to the usual two semitones, which "
+         "you may want to change.");
     note(report, "Pitch envelope depth",
          "The CZ pitch envelope is absolute. pdsynth scales its envelope by a "
          "depth control, set to 12 semitones on reading, which you may want to "

@@ -33,10 +33,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout Processor::layout()
               NormalisableRange<float>(0.0f, 1.0f), 0.5f, pct));
     l.add(std::make_unique<AudioParameterFloat>(ParameterID{"vel_level", 1}, "Vel to Level",
               NormalisableRange<float>(0.0f, 1.0f), 0.8f, pct));
+    /* These two say what a full wheel is worth, so they read in the units a
+     * player thinks in rather than as a bare number. */
+    auto semis = AudioParameterFloatAttributes().withStringFromValueFunction(
+        [](float v, int) { return juce::String(juce::roundToInt(v)) + " st"; });
     l.add(std::make_unique<AudioParameterFloat>(ParameterID{"bend_range", 1}, "Bend Range",
-              NormalisableRange<float>(0.0f, 24.0f, 1.0f), 2.0f));
+              NormalisableRange<float>(0.0f, 24.0f, 1.0f), 2.0f, semis));
     l.add(std::make_unique<AudioParameterFloat>(ParameterID{"mod_wave", 1}, "Mod to Wave",
-              NormalisableRange<float>(0.0f, 1.0f), 0.3f));
+              NormalisableRange<float>(0.0f, 1.0f), 0.3f, pct));
     l.add(std::make_unique<AudioParameterFloat>(ParameterID{"spread", 1}, "Stereo Spread",
               NormalisableRange<float>(0.0f, 1.0f), 0.45f, pct));
 
