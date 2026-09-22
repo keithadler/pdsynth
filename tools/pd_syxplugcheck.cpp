@@ -15,6 +15,17 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "../plugin/PluginProcessor.h"
 #include "pd_sysex.h"
+#include <cstdio>
+
+/* JUCE's logger writes to the debugger on Windows and to the console
+ * elsewhere, which means a failure on Windows would report nothing at all
+ * about which byte moved. This goes to stdout on every platform. */
+static void say(const juce::String& s)
+{
+    std::fputs(s.toRawUTF8(), stdout);
+    std::fputc('\n', stdout);
+    std::fflush(stdout);
+}
 
 int main(int argc, char** argv)
 {
@@ -44,7 +55,7 @@ int main(int argc, char** argv)
             f.replaceWithData(out, n);
             inputs.add(f);
         }
-        juce::Logger::writeToLog("no files given, using "
+        say("no files given, using "
             + juce::String(inputs.size()) + " dumps made from the factory bank");
     }
 
@@ -57,7 +68,7 @@ int main(int argc, char** argv)
 
         juce::String report;
         if (!proc.loadSysex(f, report)) {
-            juce::Logger::writeToLog("  cannot load " + f.getFileName() + ": " + report);
+            say("  cannot load " + f.getFileName() + ": " + report);
             failed++;
             continue;
         }
@@ -81,7 +92,7 @@ int main(int argc, char** argv)
             else {
                 diff++;
                 if (diff <= 4)
-                    juce::Logger::writeToLog("  " + f.getFileName()
+                    say("  " + f.getFileName()
                         + " byte " + juce::String(i) + ": "
                         + juce::String::toHexString(a[i]) + " became "
                         + juce::String::toHexString(b[i]));
@@ -90,10 +101,10 @@ int main(int argc, char** argv)
         if (diff == 0) identical++;
     }
 
-    juce::Logger::writeToLog("\nthrough the plugin's own parameters:");
-    juce::Logger::writeToLog("  " + juce::String(files) + " voices, "
+    say("\nthrough the plugin's own parameters:");
+    say("  " + juce::String(files) + " voices, "
         + juce::String(identical) + " identical, " + juce::String(failed) + " failed");
-    juce::Logger::writeToLog("  " + juce::String(same) + " of " + juce::String(bytes)
+    say("  " + juce::String(same) + " of " + juce::String(bytes)
         + " bytes unchanged");
 
     tmp.deleteRecursively();
