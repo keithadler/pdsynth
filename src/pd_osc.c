@@ -54,7 +54,7 @@ static double bend_two_segment(double p, double m)
  * puts a formant peak in the spectrum and lets it sweep with the envelope
  * while the pitch stays put.
  */
-static double window_falling(double p, pd_wave_t wave)
+double pd_window(double p, pd_wave_t wave)
 {
     switch (wave) {
     case PD_RESO_SAW:
@@ -68,6 +68,13 @@ static double window_falling(double p, pd_wave_t wave)
     default:
         return 1.0;
     }
+}
+
+int pd_resonant_harmonic(double amount)
+{
+    if (amount < 0.0) amount = 0.0;
+    if (amount > 1.0) amount = 1.0;
+    return 1 + (int)floor(amount * 15.0);
 }
 
 double pd_distort(double phase, pd_wave_t wave, double amount)
@@ -160,8 +167,8 @@ double pd_osc_next(pd_osc_t *o, pd_wave_t wave, double amount)
          * pitch does not. Keeping it a whole number keeps the window and the
          * sine locked together, which is what stops it buzzing.
          */
-        double harmonic = 1.0 + floor(amount * 15.0);
-        out = sin(2.0 * M_PI * p * harmonic) * window_falling(p, wave);
+        double harmonic = (double)pd_resonant_harmonic(amount);
+        out = sin(2.0 * M_PI * p * harmonic) * pd_window(p, wave);
     } else {
         out = sin(2.0 * M_PI * pd_distort(p, wave, amount));
     }

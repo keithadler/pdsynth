@@ -11,6 +11,31 @@ is bent is a single number, and on the hardware that number comes from an eight
 step envelope, which is why a CZ sweeps the way it does while owning no filter
 at all.
 
+## The standalone
+
+<img src="docs/panel.png" width="760" alt="the pdsynth panel">
+
+```
+cmake -B build && cmake --build build
+./build/pdsynth
+```
+
+A window, a keyboard and the two lines drawn as they move. Phase distortion is
+hard to believe from a description, so the panel shows the bend as a curve,
+live, beside the waveform it produces: one sine table read through a changing
+phase, with nothing filtered anywhere.
+
+The resonant waveforms get a different picture, because they bend nothing at
+all. They are a sine at a whole multiple of the note under a window that falls
+across the cycle, so their panel draws that window and names the multiple. An
+undistorted phase ramp there would have said "no distortion" about the most
+distinctive sound the machine makes.
+
+Play it from the computer keyboard, `z` to `m` and `q` to `i`, or over MIDI:
+it publishes a destination called **pdsynth** and connects to any hardware
+source it finds. `1` to `8` change line one's waveform, `[` and `]` change line
+two's, space is panic.
+
 ## Listen first
 
 ```

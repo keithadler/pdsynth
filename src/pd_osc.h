@@ -58,4 +58,14 @@ double pd_osc_next(pd_osc_t *o, pd_wave_t wave, double amount);
 /* The phase mapping on its own, for testing and for anyone curious. */
 double pd_distort(double phase, pd_wave_t wave, double amount);
 
+/*
+ * The resonant waveforms do not bend phase at all. They are a sine at a whole
+ * multiple of the note, multiplied by a window that falls across the cycle.
+ * These two expose that window and that multiple, so a panel can show what is
+ * actually shaping the sound instead of drawing an undistorted phase ramp and
+ * implying nothing is happening.
+ */
+double pd_window(double phase, pd_wave_t wave);
+int    pd_resonant_harmonic(double amount);
+
 #endif
