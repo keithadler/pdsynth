@@ -1,6 +1,8 @@
 # pdsynth
 
-Casio CZ phase distortion, in software.
+Casio CZ phase distortion, in software. CLAP, VST3, AU, LV2 and standalone.
+
+<img src="docs/editor.png" width="920" alt="the pdsynth editor">
 
 Phase distortion is not FM and it is not subtractive, though it was sold in
 1984 against machines that were both. A CZ reads one sine table and bends the
@@ -11,44 +13,30 @@ is bent is a single number, and on the hardware that number comes from an eight
 step envelope, which is why a CZ sweeps the way it does while owning no filter
 at all.
 
-## The standalone
+That is why the eight step envelope is the middle of the window rather than
+something behind a menu, and why the phase bend is drawn live beside the
+waveform it produces. It is a technique nobody believes from a description.
 
-<img src="docs/panel.png" width="760" alt="the pdsynth panel">
-
-```
-cmake -B build && cmake --build build
-./build/pdsynth
-```
-
-A window, a keyboard and the two lines drawn as they move. Phase distortion is
-hard to believe from a description, so the panel shows the bend as a curve,
-live, beside the waveform it produces: one sine table read through a changing
-phase, with nothing filtered anywhere.
-
-The resonant waveforms get a different picture, because they bend nothing at
-all. They are a sine at a whole multiple of the note under a window that falls
-across the cycle, so their panel draws that window and names the multiple. An
-undistorted phase ramp there would have said "no distortion" about the most
-distinctive sound the machine makes.
-
-Play it from the computer keyboard, `z` to `m` and `q` to `i`, or over MIDI:
-it publishes a destination called **pdsynth** and connects to any hardware
-source it finds. `1` to `8` change line one's waveform, `[` and `]` change line
-two's, space is panic.
-
-## Listen first
+## Building
 
 ```
 cmake -B build && cmake --build build
-./build/pd_render demo.wav
 ```
 
-Six demonstrations: the sweep the machine is known for, the resonant waveforms
-whose formant climbs while the pitch stays put, two detuned lines, an eight
-step envelope doing a double attack that no ADSR can express, ring modulation,
-and noise modulation.
+Fetches JUCE 8 and clap-juce-extensions and produces the standalone, the CLAP,
+the VST3, the AU on macOS and the LV2. The synthesis is plain C and has no
+dependencies at all: `-DPDSYNTH_BUILD_PLUGIN=OFF` builds the engine, the tests
+and the headless renderer on their own.
 
-## What is here
+## Playing it
+
+The standalone publishes a MIDI port called **pdsynth**, so a DAW, a keyboard
+or a script can reach it without opening a settings dialog. The computer keys
+play two octaves, `z` to `m` and `q` to `i`, with the arrows shifting octave and
+space for panic. Bend and mod wheels sit at the left of the keyboard; bend
+springs back to centre when released, as a real one does.
+
+## What is in it
 
 **Eight waveforms**, the set a CZ-101 lists on its panel.
 
@@ -57,27 +45,28 @@ and noise modulation.
 | saw, square, pulse, double sine, saw pulse | a bent phase, one sine table |
 | reso saw, reso triangle, reso trapezoid | a sine at a multiple of the note, under a falling window |
 
-Every one collapses to a pure sine when nothing is bent, which is what the
-hardware does with its DCW envelope at zero, and every one brightens as it
-bends. The sawtooth carries a falling harmonic series, the square carries odd
-harmonics and no even ones, and the resonant three sweep a formant from the
-third harmonic to the thirteenth without moving the pitch.
+Each is checked by its spectrum rather than by eye. Every one collapses to a
+clean sine when the DCW is at zero, which is what the hardware does; the
+sawtooth carries a falling harmonic series; the square carries odd harmonics
+and no even ones; and the resonant three sweep a formant from the third
+harmonic to the thirteenth while the pitch stays where it is.
 
-**Eight step envelopes**, three per line, on the pitch, the waveform and the
-level. Each step is a rate and a level, with one step marked as the sustain and
-one as the end. This is not an ADSR with extra stages: it can do an ADSR, and
-it can also do a double attack, a swell that pauses, or a decay that stops
-halfway down and starts again, none of which an ADSR can express. The envelope
-on the waveform is why no filter is needed.
+**Eight step envelopes**, three per line, on pitch, waveform and level. Each
+step is a rate and a level, with one marked as the sustain and one as the end.
+This is not an ADSR with extra stages: it can do an ADSR, and it can also do a
+double attack, a swell that pauses, or a decay that stops halfway down and
+starts again. The envelope on the waveform is why no filter is needed.
 
-**Two lines per voice**, each an oscillator with its own three envelopes,
-detunable against each other, which is most of what the machine is remembered
-for.
+**Two lines per voice**, each an oscillator under its own three envelopes,
+detunable against each other and placed across the stereo field.
 
-**Ring and noise modulation.** The originals had both. The 2026 hardware
+**Ring and noise modulation.** The originals had both; the 2026 hardware
 reissue has neither. Noise here shakes how far the phase is bent rather than
-how loud the line is: shaking the amplitude hollows the note out, and at full
-depth removes most of what you were playing.
+how loud the line is: shaking the amplitude is ring modulation with a noise
+source, and at full depth it removes most of the note.
+
+**Twenty presets**, original designs built from published technique. No
+parameter list is copied from anyone and Casio's ROM data is not here.
 
 ## Testing
 
@@ -85,21 +74,36 @@ depth removes most of what you were playing.
 ctest --test-dir build
 ```
 
-The oscillator is judged by its spectrum, because that is the only thing about
-an oscillator a listener can hear. The envelope is judged by where it is at a
-given moment, because an envelope that reaches the right levels at the wrong
+Five suites. The oscillator is judged by its spectrum, because that is the only
+thing about an oscillator a listener can hear. The envelope is judged by where
+it is at a given moment, because one that reaches the right levels at the wrong
 time is a different instrument. The voice is judged on pitch, detuning,
 velocity, and on whether the waveform envelope does the work a filter would do
 elsewhere.
 
+The last two suites judge the bank. One asks whether a preset is broken: does
+it sound, does it answer the hand, does it sit at the level of its neighbours.
+The other asks the harder question, whether a preset behaves like the thing it
+is named after, because a marimba that sustains for four seconds is not a
+marimba however clean it measures. Those targets come from how the instruments
+work rather than from taste: a struck bar rings and then stops and dulls as it
+goes, brass brightens after the note starts rather than before, an organ is a
+switch and not a shape. It found eleven real faults the first time it ran.
+
 ## Still to come
 
-CV and gate, so it can sit in a modular rig. A SysEx import that knows what a
+CV and gate, so it can sit in a modular rig. A sysex import that knows what a
 given piece of hardware supports and turns off what it does not, and an export
 that declines to send parameters the target cannot receive. Aftertouch. A
-multimode filter, glide, and more than two lines stacked, all of which are
-things the hardware could not do and software has no reason not to.
+multimode filter, glide, and more than two lines stacked, none of which the
+hardware could do and none of which software has a reason not to.
+
+## Thanks
+
+To [@Reaper10](https://github.com/Reaper10), whose description of what a
+software CZ ought to be is why this exists, and whose list is most of what is
+left to build.
 
 ## License
 
-GPL-2.0-or-later.
+GPL-2.0-or-later. See [COPYING](COPYING).
