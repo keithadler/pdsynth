@@ -19,6 +19,7 @@
 #include "pd_osc.h"
 #include "pd_env.h"
 #include "pd_os.h"
+#include "pd_filter.h"
 
 typedef struct {
     pd_wave_t       wave;
@@ -38,9 +39,17 @@ typedef enum {
     PD_MIX_NOISE        /* line 1 modulated by noise */
 } pd_mix_t;
 
+/*
+ * The hardware stacks two. There is no reason software should: the limit on a
+ * CZ was the cost of the chips, and four lines is the same code run twice more.
+ * They are independent rather than paired, because a pair is four lines with
+ * two of the detunes set the same, and the reverse is not true.
+ */
+#define PD_MAX_LINES 4
+
 typedef struct {
-    pd_line_params_t line[2];
-    int              line_count;    /* 1 or 2 */
+    pd_line_params_t line[PD_MAX_LINES];
+    int              line_count;    /* 1 to PD_MAX_LINES */
     pd_mix_t         mix;
     double           noise_amount;  /* for PD_MIX_NOISE, 0 to 1 */
     double           velocity_to_wave;   /* how much playing harder opens it */
@@ -48,6 +57,17 @@ typedef struct {
     double           bend_range_semitones;  /* what a full wheel is worth */
     double           mod_to_wave;           /* the mod wheel opening the waveform */
     double           spread;                /* 0 mono, 1 lines hard apart */
+    double           glide_seconds;         /* 0 for none: time to cross an octave */
+    double           aftertouch_to_wave;    /* pressure opening the waveform */
+    double           aftertouch_to_level;
+
+    /* The filter the hardware never had. Off unless a patch asks for it. */
+    pd_filter_mode_t filter_mode;
+    double           filter_cutoff_hz;
+    double           filter_resonance;
+    double           filter_env_depth;   /* the DCW envelope of line 1, applied
+                                            to cutoff, in octaves */
+    double           filter_key_track;   /* 0 fixed, 1 follows the note */
 } pd_patch_t;
 
 typedef struct {
@@ -57,7 +77,7 @@ typedef struct {
 
 typedef struct {
     const pd_patch_t *patch;
-    pd_line_t   line[2];
+    pd_line_t   line[PD_MAX_LINES];
     double      sample_rate;
     double      base_hz;
     int         note;
@@ -66,6 +86,10 @@ typedef struct {
     uint32_t    noise_state;
     double      bend;        /* -1 to 1, the wheel */
     double      mod;         /*  0 to 1 */
+    double      pressure;    /*  0 to 1, aftertouch */
+
+    /* Glide: the sounding pitch chases the played one rather than jumping. */
+    double      glide_hz, glide_target_hz, glide_rate;
 
     /* Everything inside the voice runs at PD_OVERSAMPLE times the rate it is
      * asked for, and pd_voice_next filters and returns one sample in four. */
@@ -76,6 +100,7 @@ typedef struct {
      * carry a steady offset. One voice of it is inaudible; sixteen of them
      * stacked is wasted headroom and a thump on every note. */
     double      dc_x1, dc_y1, dc_r;
+    pd_filter_t filt_l, filt_r;
 } pd_voice_t;
 
 void   pd_patch_init(pd_patch_t *p);
@@ -96,6 +121,7 @@ void   pd_voice_next_inner(pd_voice_t *v, double *left, double *right);
 /* The wheels. Safe to call while a note is sounding, which is the point. */
 void   pd_voice_set_bend(pd_voice_t *v, double minus_one_to_one);
 void   pd_voice_set_mod(pd_voice_t *v, double zero_to_one);
+void   pd_voice_set_pressure(pd_voice_t *v, double zero_to_one);
 int    pd_voice_active(const pd_voice_t *v);
 
 double pd_note_to_hz(int midi_note);

@@ -26,7 +26,7 @@ typedef struct {
     pd_decimator_t decim_l, decim_r;
     double         sample_rate;
     const pd_patch_t *patch;
-    double         bend, mod;      /* where the wheels are */
+    double         bend, mod, pressure;   /* where the wheels and the hand are */
     unsigned long  stamp;          /* for stealing the oldest voice */
     unsigned long  started[PD_MAX_VOICES];
 } pd_synth_t;
@@ -37,6 +37,7 @@ void pd_synth_note_off(pd_synth_t *s, int note);
 void pd_synth_all_off(pd_synth_t *s);
 void pd_synth_set_bend(pd_synth_t *s, double minus_one_to_one);
 void pd_synth_set_mod(pd_synth_t *s, double zero_to_one);
+void pd_synth_set_pressure(pd_synth_t *s, double zero_to_one);
 void pd_synth_render(pd_synth_t *s, double *left, double *right);
 int  pd_synth_active(const pd_synth_t *s);
 

@@ -32,6 +32,7 @@ void pd_synth_note_on(pd_synth_t *s, int note, double velocity)
     }
     pd_voice_set_bend(&s->voice[pick], s->bend);
     pd_voice_set_mod(&s->voice[pick], s->mod);
+    pd_voice_set_pressure(&s->voice[pick], s->pressure);
     pd_voice_note_on(&s->voice[pick], note, velocity);
     s->started[pick] = ++s->stamp;
 }
@@ -57,6 +58,12 @@ void pd_synth_set_mod(pd_synth_t *s, double m)
 {
     s->mod = m;
     for (int i = 0; i < s->voice_count; i++) pd_voice_set_mod(&s->voice[i], m);
+}
+
+void pd_synth_set_pressure(pd_synth_t *s, double p)
+{
+    s->pressure = p;
+    for (int i = 0; i < s->voice_count; i++) pd_voice_set_pressure(&s->voice[i], p);
 }
 
 void pd_synth_render(pd_synth_t *s, double *left, double *right)

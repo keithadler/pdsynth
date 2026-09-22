@@ -8,7 +8,7 @@
 
 namespace pd
 {
-static constexpr int kW = 1080, kH = 780;
+static constexpr int kW = 1080, kH = 900;
 
 Editor::Editor(Processor& p)
     : juce::AudioProcessorEditor(&p), proc(p), envEditor(p.apvts)
@@ -20,20 +20,22 @@ Editor::Editor(Processor& p)
         b.setClickingTogglesState(false);
         addAndMakeVisible(b);
     };
-    const char* kLineNames[2] = { "LINE 1", "LINE 2" };
+    const char* kLineNames[PD_MAX_LINES] = { "LINE 1", "LINE 2", "LINE 3", "LINE 4" };
     const char* kEnvLabels[3] = { "PITCH", "WAVEFORM", "AMPLITUDE" };
     const char* kMixLabels[3] = { "BOTH", "RING", "NOISE" };
 
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < PD_MAX_LINES; i++) {
         addBtn(lineBtn[i], kLineNames[i]);
         lineBtn[i].onClick = [this, i] { selectLine(i); };
     }
-    addBtn(twoLines, "TWO LINES");
-    twoLines.onClick = [this] {
+    /* cycles 1 to 4: the hardware stacked two and there is no reason to */
+    addBtn(lineCountBtn, "LINES 2");
+    lineCountBtn.onClick = [this] {
         if (auto* pr = proc.apvts.getParameter("lines")) {
-            bool two = pr->getValue() > 0.5f;
+            const int now = (int)std::lround(pr->getValue() * 3.0f);
+            const int next = (now + 1) % PD_MAX_LINES;
             pr->beginChangeGesture();
-            pr->setValueNotifyingHost(two ? 0.0f : 1.0f);
+            pr->setValueNotifyingHost((float)next / 3.0f);
             pr->endChangeGesture();
         }
     };
@@ -81,6 +83,19 @@ Editor::Editor(Processor& p)
     knob(noise,      noiseL,      "NOISE",     Theme::accent);
     knob(velWave,    velWaveL,    "VEL>WAVE",  Theme::accent);
     knob(velLevel,   velLevelL,   "VEL>LEVEL", Theme::accent);
+    knob(glide,      glideL,      "GLIDE",     Theme::lineTwo);
+    knob(atWave,     atWaveL,     "PRESSURE",  Theme::lineTwo);
+    knob(cutoff,     cutoffL,     "CUTOFF",    Theme::accent);
+    knob(resonance,  resonanceL,  "RESONANCE", Theme::accent);
+    knob(filtEnv,    filtEnvL,    "DCW>CUTOFF",Theme::accent);
+
+    for (int i = 0; i < PD_FILTER_MODES; i++)
+        filterBox.addItem(juce::String(pd_filter_mode_name((pd_filter_mode_t)i)).toUpperCase(), i + 1);
+    addAndMakeVisible(filterBox);
+    filterL.setText("FILTER", juce::dontSendNotification);
+    filterL.setFont(Theme::label(10.5f));
+    filterL.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(filterL);
 
     addAndMakeVisible(envEditor);
     for (auto& w : waveView) addAndMakeVisible(w);
@@ -89,6 +104,13 @@ Editor::Editor(Processor& p)
     aNoise    = std::make_unique<SA>(proc.apvts, "noise", noise);
     aVelWave  = std::make_unique<SA>(proc.apvts, "vel_wave", velWave);
     aVelLevel = std::make_unique<SA>(proc.apvts, "vel_level", velLevel);
+    aGlide    = std::make_unique<SA>(proc.apvts, "glide", glide);
+    aAtWave   = std::make_unique<SA>(proc.apvts, "at_wave", atWave);
+    aCutoff   = std::make_unique<SA>(proc.apvts, "filt_cutoff", cutoff);
+    aRes      = std::make_unique<SA>(proc.apvts, "filt_res", resonance);
+    aFiltEnv  = std::make_unique<SA>(proc.apvts, "filt_env", filtEnv);
+    aFilter   = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+                    proc.apvts, "filt_mode", filterBox);
     syncAttachments();
     selectLine(0);
     selectEnv(1);
@@ -169,7 +191,7 @@ Editor::Editor(Processor& p)
     setWantsKeyboardFocus(true);
     setSize(kW, kH);
     setResizable(true, true);
-    setResizeLimits(960, 700, 1800, 1300);
+    setResizeLimits(980, 820, 1800, 1400);
     startTimerHz(30);
 }
 
@@ -220,7 +242,14 @@ void Editor::selectEnv(int e)
 
 void Editor::refreshToggles()
 {
-    for (int i = 0; i < 2; i++) lineBtn[i].setToggleState(i == currentLine, juce::dontSendNotification);
+    int nLines = 2;
+    if (auto* lp = proc.apvts.getRawParameterValue("lines")) nLines = (int)lp->load() + 1;
+    for (int i = 0; i < PD_MAX_LINES; i++) {
+        lineBtn[i].setToggleState(i == currentLine, juce::dontSendNotification);
+        lineBtn[i].setEnabled(i < nLines);
+    }
+    lineCountBtn.setButtonText("LINES " + juce::String(nLines));
+    lineCountBtn.setToggleState(nLines > 1, juce::dontSendNotification);
     for (int i = 0; i < 3; i++) envBtn[i].setToggleState(i == currentEnv, juce::dontSendNotification);
     if (auto* w = proc.apvts.getRawParameterValue(Ids::line(currentLine, "wave")))
         for (int i = 0; i < PD_WAVE_COUNT; i++)
@@ -228,8 +257,7 @@ void Editor::refreshToggles()
     if (auto* m = proc.apvts.getRawParameterValue("mix"))
         for (int i = 0; i < 3; i++)
             mixBtn[i].setToggleState(i == (int)m->load(), juce::dontSendNotification);
-    if (auto* l = proc.apvts.getRawParameterValue("lines"))
-        twoLines.setToggleState(l->load() > 0.5f, juce::dontSendNotification);
+
 }
 
 void Editor::timerCallback()
@@ -289,7 +317,11 @@ void Editor::paint(juce::Graphics& g)
     g.drawText("z-m and q-i play    left/right octave    space panic",
                getLocalBounds().withTrimmedRight(24).withTrimmedBottom(8),
                juce::Justification::bottomRight, false);
-    g.drawText("no filter in the path",
+    /* The claim has to stop being made the moment it stops being true. */
+    int fm = 0;
+    if (auto* f = proc.apvts.getRawParameterValue("filt_mode")) fm = (int)f->load();
+    g.drawText(fm == 0 ? "no filter in the path"
+                       : juce::String(pd_filter_mode_name((pd_filter_mode_t)fm)) + " engaged",
                juce::Rectangle<int>(22, 58, 300, 16),
                juce::Justification::centredLeft, false);
 }
@@ -339,13 +371,14 @@ void Editor::resized()
     r.removeFromRight(18);
 
     // left: which line, its waveform, its knobs, the mix
-    auto row = left.removeFromTop(28);
-    lineBtn[0].setBounds(row.removeFromLeft(78));
-    row.removeFromLeft(6);
-    lineBtn[1].setBounds(row.removeFromLeft(78));
-    row.removeFromLeft(10);
-    twoLines.setBounds(row);
-    left.removeFromTop(16);
+    auto row = left.removeFromTop(26);
+    for (int i = 0; i < 2; i++) { lineBtn[i].setBounds(row.removeFromLeft(62)); row.removeFromLeft(5); }
+    row.removeFromLeft(4);
+    lineCountBtn.setBounds(row);
+    left.removeFromTop(5);
+    auto row2 = left.removeFromTop(26);
+    for (int i = 2; i < 4; i++) { lineBtn[i].setBounds(row2.removeFromLeft(62)); row2.removeFromLeft(5); }
+    left.removeFromTop(12);
 
     for (int i = 0; i < PD_WAVE_COUNT; i++) {
         int col = i % 2, rowI = i / 2;
@@ -366,6 +399,21 @@ void Editor::resized()
     place(noise,    noiseL,    rowB.removeFromLeft(89));
     place(velWave,  velWaveL,  rowB.removeFromLeft(89));
     place(velLevel, velLevelL, rowB);
+
+    left.removeFromTop(8);
+    auto rowC = left.removeFromTop(75);
+    place(glide,     glideL,     rowC.removeFromLeft(89));
+    place(atWave,    atWaveL,    rowC.removeFromLeft(89));
+    place(filtEnv,   filtEnvL,   rowC);
+
+    left.removeFromTop(10);
+    auto fRow = left.removeFromTop(24);
+    filterL.setBounds(fRow.removeFromLeft(48));
+    filterBox.setBounds(fRow);
+    left.removeFromTop(6);
+    auto rowD = left.removeFromTop(75);
+    place(cutoff,    cutoffL,    rowD.removeFromLeft(89));
+    place(resonance, resonanceL, rowD.removeFromLeft(89));
 
     left.removeFromTop(juce::jmax(14, left.getHeight() - 42));
     auto mixRow = left.removeFromTop(28);

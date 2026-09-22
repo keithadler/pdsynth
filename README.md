@@ -57,8 +57,21 @@ This is not an ADSR with extra stages: it can do an ADSR, and it can also do a
 double attack, a swell that pauses, or a decay that stops halfway down and
 starts again. The envelope on the waveform is why no filter is needed.
 
-**Two lines per voice**, each an oscillator under its own three envelopes,
-detunable against each other and placed across the stereo field.
+**Up to four lines per voice**, each an oscillator under its own three
+envelopes, detunable against each other and placed across the stereo field. The
+hardware stacked two; the limit there was the cost of the chips, and four is the
+same code run twice more. They are independent rather than paired, because a
+pair is four lines with two of the detunes set the same and the reverse is not
+true.
+
+**Glide, aftertouch, and a multimode filter**, none of which the hardware had.
+The filter is a state variable design giving low pass, high pass, band pass and
+notch, and its cutoff can follow the first line's waveform envelope, so a filter
+sweep and a phase bend can move together. It is off unless a patch asks for it
+and no preset uses it: the argument that a CZ does not need a filter is sound,
+and this does not weaken it. It is here because a bend can only ever add
+harmonics, and there is no other way to notch something out or make a band pass
+honk.
 
 **Ring and noise modulation.** The originals had both; the 2026 hardware
 reissue has neither. Noise here shakes how far the phase is bent rather than
@@ -92,11 +105,12 @@ switch and not a shape. It found eleven real faults the first time it ran.
 
 ## Still to come
 
-CV and gate, so it can sit in a modular rig. A sysex import that knows what a
-given piece of hardware supports and turns off what it does not, and an export
-that declines to send parameters the target cannot receive. Aftertouch. A
-multimode filter, glide, and more than two lines stacked, none of which the
-hardware could do and none of which software has a reason not to.
+CV and gate, so it can sit in a modular rig, which needs a DC coupled interface
+to be worth anything. A sysex import that knows what a given piece of hardware
+supports and turns off what it does not, and an export that declines to send
+parameters the target cannot receive; that one waits on having the byte layout
+verified rather than guessed, because a librarian that writes plausible
+nonsense to a real machine is worse than none.
 
 ## Thanks
 

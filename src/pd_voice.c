@@ -18,7 +18,7 @@ void pd_patch_init(pd_patch_t *p)
     memset(p, 0, sizeof(*p));
     p->line_count = 1;
     p->mix = PD_MIX_BOTH;
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < PD_MAX_LINES; i++) {
         pd_line_params_t *l = &p->line[i];
         l->wave = PD_SAW;
         l->level = 1.0;
@@ -32,6 +32,14 @@ void pd_patch_init(pd_patch_t *p)
     p->bend_range_semitones = 2.0;
     p->mod_to_wave = 0.0;
     p->spread = 0.45;
+    p->glide_seconds = 0.0;
+    p->aftertouch_to_wave = 0.0;
+    p->aftertouch_to_level = 0.0;
+    p->filter_mode = PD_FILTER_OFF;
+    p->filter_cutoff_hz = 8000.0;
+    p->filter_resonance = 0.2;
+    p->filter_env_depth = 0.0;
+    p->filter_key_track = 0.0;
 }
 
 void pd_voice_init(pd_voice_t *v, const pd_patch_t *patch, double sample_rate)
@@ -42,11 +50,14 @@ void pd_voice_init(pd_voice_t *v, const pd_patch_t *patch, double sample_rate)
     v->inner_rate  = v->sample_rate * PD_OVERSAMPLE;
     v->noise_state = 0x1234567u;
     pd_decimator_init(&v->decim, v->sample_rate);
+    v->glide_hz = v->glide_target_hz = 0.0;
     /* a one pole high pass at about 8 Hz: below anything anyone plays, and
      * gentle enough that it does not touch the shape of a bass note */
     v->dc_r = 1.0 - 2.0 * 3.14159265358979323846 * 8.0 / v->sample_rate;
     v->dc_x1 = v->dc_y1 = 0.0;
-    for (int i = 0; i < 2; i++) {
+    pd_filter_reset(&v->filt_l);
+    pd_filter_reset(&v->filt_r);
+    for (int i = 0; i < PD_MAX_LINES; i++) {
         pd_osc_init(&v->line[i].osc);
         /* the envelopes run at the inner rate too, or a patch would play four
          * times faster than it was written */
@@ -60,7 +71,17 @@ void pd_voice_note_on(pd_voice_t *v, int midi_note, double velocity)
 {
     v->note = midi_note;
     v->velocity = velocity < 0 ? 0 : (velocity > 1 ? 1 : velocity);
-    v->base_hz = pd_note_to_hz(midi_note);
+    const double target = pd_note_to_hz(midi_note);
+    /*
+     * Glide from wherever the voice currently sounds, so a legato line slides
+     * and the first note of a phrase does not slide up from nothing.
+     */
+    if (v->patch->glide_seconds > 0.0 && v->glide_hz > 0.0) {
+        v->glide_target_hz = target;
+    } else {
+        v->glide_hz = v->glide_target_hz = target;
+    }
+    v->base_hz = v->glide_hz;
     v->active = 1;
     for (int i = 0; i < v->patch->line_count; i++) {
         pd_env_key_down(&v->line[i].pitch);
@@ -77,6 +98,11 @@ void pd_voice_set_bend(pd_voice_t *v, double b)
 void pd_voice_set_mod(pd_voice_t *v, double m)
 {
     v->mod = m < 0.0 ? 0.0 : (m > 1.0 ? 1.0 : m);
+}
+
+void pd_voice_set_pressure(pd_voice_t *v, double p)
+{
+    v->pressure = p < 0.0 ? 0.0 : (p > 1.0 ? 1.0 : p);
 }
 
 void pd_voice_note_off(pd_voice_t *v)
@@ -123,11 +149,13 @@ static double run_line(pd_voice_t *v, int i, double bend_offset)
      * there is to opening a filter. */
     double bend = wave_env * (1.0 - v->patch->velocity_to_wave
                               + v->patch->velocity_to_wave * v->velocity);
-    bend += bend_offset + v->mod * v->patch->mod_to_wave;
+    bend += bend_offset + v->mod * v->patch->mod_to_wave
+                        + v->pressure * v->patch->aftertouch_to_wave;
     if (bend < 0.0) bend = 0.0;
     if (bend > 1.0) bend = 1.0;
     double amp = amp_env * lp->level;
     amp *= (1.0 - v->patch->velocity_to_level + v->patch->velocity_to_level * v->velocity);
+    amp *= 1.0 + v->pressure * v->patch->aftertouch_to_level;
 
     return pd_osc_next(&l->osc, lp->wave, bend) * amp;
 }
@@ -136,6 +164,22 @@ static double run_line(pd_voice_t *v, int i, double bend_offset)
  * can place them. */
 static void voice_inner_lines(pd_voice_t *v, double *outA, double *outB)
 {
+    /*
+     * Chase the played pitch. The rate is set so that glide_seconds is the
+     * time to cross an octave, which is what a player means by a glide time:
+     * a semitone should not take as long as two octaves.
+     */
+    if (v->glide_hz != v->glide_target_hz) {
+        const double per_sample = v->patch->glide_seconds > 0.0
+            ? 1.0 / (v->patch->glide_seconds * v->inner_rate) : 1.0;
+        const double ratio = v->glide_target_hz / v->glide_hz;
+        const double octaves = log2(ratio > 0 ? ratio : 1.0);
+        const double step = (octaves > 0 ? per_sample : -per_sample);
+        if (fabs(octaves) <= per_sample) v->glide_hz = v->glide_target_hz;
+        else v->glide_hz *= pow(2.0, step);
+        v->base_hz = v->glide_hz;
+    }
+
 
     /*
      * Noise modulation shakes how far the phase is bent, not how loud the line
@@ -148,19 +192,29 @@ static void voice_inner_lines(pd_voice_t *v, double *outA, double *outB)
     double bend_noise = (v->patch->mix == PD_MIX_NOISE)
                       ? noise(v) * v->patch->noise_amount * 0.5 : 0.0;
 
-    double a = run_line(v, 0, bend_noise);
-    double b = (v->patch->line_count > 1) ? run_line(v, 1, 0.0) : 0.0;
+    /*
+     * Odd lines go to one side and even lines to the other, so two lines sit
+     * apart and four make a pair either side rather than all piling into the
+     * middle.
+     */
+    double a = 0.0, b = 0.0;
+    const int n = v->patch->line_count < 1 ? 1
+                : (v->patch->line_count > PD_MAX_LINES ? PD_MAX_LINES : v->patch->line_count);
+    for (int i = 0; i < n; i++) {
+        const double x = run_line(v, i, i == 0 ? bend_noise : 0.0);
+        if (i % 2 == 0) a += x; else b += x;
+    }
 
     if (v->patch->mix == PD_MIX_RING) {
-        /* the second line is a modulator rather than a voice of its own, so
-         * there is only one signal to place */
-        a = (v->patch->line_count > 1) ? a * b : a;
+        /* the even lines modulate the odd ones rather than sounding beside
+         * them, so there is one signal to place rather than two */
+        a = (n > 1) ? a * b : a;
         b = 0.0;
     }
 
     /* a voice is done when every line it uses has finished its amplitude */
     int alive = 0;
-    for (int i = 0; i < v->patch->line_count; i++)
+    for (int i = 0; i < n; i++)
         if (!pd_env_finished(&v->line[i].amp)) alive = 1;
     if (!alive) v->active = 0;
 
@@ -179,8 +233,27 @@ void pd_voice_next_inner(pd_voice_t *v, double *left, double *right)
      * that arrives in one spot in the middle sounds smaller than it is. */
     const double s = v->patch->spread;
     const double la = 0.5 + 0.5 * s, ra = 0.5 - 0.5 * s;
-    *left  = a * la + b * ra;
-    *right = a * ra + b * la;
+    double l = a * la + b * ra;
+    double r = a * ra + b * la;
+
+    if (v->patch->filter_mode != PD_FILTER_OFF) {
+        /*
+         * The cutoff follows the first line's waveform envelope and the note,
+         * so a filter sweep and a phase bend can move together, which is the
+         * one thing the hardware could never be asked to do.
+         */
+        double cutoff = v->patch->filter_cutoff_hz;
+        cutoff *= pow(2.0, v->line[0].wave.value * v->patch->filter_env_depth);
+        if (v->patch->filter_key_track > 0.0)
+            cutoff *= pow(2.0, v->patch->filter_key_track
+                               * log2(v->base_hz / 261.6256));
+        l = pd_filter_step(&v->filt_l, l, v->patch->filter_mode,
+                           cutoff, v->patch->filter_resonance, v->inner_rate);
+        r = pd_filter_step(&v->filt_r, r, v->patch->filter_mode,
+                           cutoff, v->patch->filter_resonance, v->inner_rate);
+    }
+
+    *left = l; *right = r;
 }
 
 double pd_voice_next(pd_voice_t *v)

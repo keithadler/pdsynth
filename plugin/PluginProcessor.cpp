@@ -22,7 +22,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout Processor::layout()
         waves.add(juce::String(pd_wave_name((pd_wave_t)i)).replaceCharacter('_', ' '));
 
     l.add(std::make_unique<AudioParameterChoice>(ParameterID{"lines", 1}, "Lines",
-              StringArray{ "One", "Two" }, 1));
+              StringArray{ "One", "Two", "Three", "Four" }, 1));
     l.add(std::make_unique<AudioParameterChoice>(ParameterID{"mix", 1}, "Mix",
               StringArray{ "Both", "Ring", "Noise" }, 0));
     auto pct = AudioParameterFloatAttributes().withStringFromValueFunction(
@@ -40,7 +40,36 @@ juce::AudioProcessorValueTreeState::ParameterLayout Processor::layout()
     l.add(std::make_unique<AudioParameterFloat>(ParameterID{"spread", 1}, "Stereo Spread",
               NormalisableRange<float>(0.0f, 1.0f), 0.45f, pct));
 
-    for (int i = 0; i < 2; i++) {
+    // the four things the hardware could not do
+    auto secs = AudioParameterFloatAttributes().withStringFromValueFunction(
+        [](float v, int) { return v < 0.005f ? juce::String("off")
+                                             : juce::String(v, 2) + " s"; });
+    l.add(std::make_unique<AudioParameterFloat>(ParameterID{"glide", 1}, "Glide",
+              NormalisableRange<float>(0.0f, 2.0f, 0.01f), 0.0f, secs));
+    l.add(std::make_unique<AudioParameterFloat>(ParameterID{"at_wave", 1}, "Pressure to Wave",
+              NormalisableRange<float>(0.0f, 1.0f), 0.0f, pct));
+    l.add(std::make_unique<AudioParameterFloat>(ParameterID{"at_level", 1}, "Pressure to Level",
+              NormalisableRange<float>(0.0f, 1.0f), 0.0f, pct));
+
+    StringArray modes;
+    for (int i = 0; i < PD_FILTER_MODES; i++)
+        modes.add(juce::String(pd_filter_mode_name((pd_filter_mode_t)i)));
+    l.add(std::make_unique<AudioParameterChoice>(ParameterID{"filt_mode", 1}, "Filter", modes, 0));
+    auto hz = AudioParameterFloatAttributes().withStringFromValueFunction(
+        [](float v, int) { return v >= 1000.0f ? juce::String(v / 1000.0f, 2) + " kHz"
+                                               : juce::String(juce::roundToInt(v)) + " Hz"; });
+    l.add(std::make_unique<AudioParameterFloat>(ParameterID{"filt_cutoff", 1}, "Cutoff",
+              NormalisableRange<float>(20.0f, 18000.0f, 1.0f, 0.3f), 8000.0f, hz));
+    l.add(std::make_unique<AudioParameterFloat>(ParameterID{"filt_res", 1}, "Resonance",
+              NormalisableRange<float>(0.0f, 1.0f), 0.2f, pct));
+    auto oct = AudioParameterFloatAttributes().withStringFromValueFunction(
+        [](float v, int) { return juce::String(v, 1) + " oct"; });
+    l.add(std::make_unique<AudioParameterFloat>(ParameterID{"filt_env", 1}, "Cutoff from DCW",
+              NormalisableRange<float>(-6.0f, 6.0f, 0.1f), 0.0f, oct));
+    l.add(std::make_unique<AudioParameterFloat>(ParameterID{"filt_key", 1}, "Cutoff Key Track",
+              NormalisableRange<float>(0.0f, 1.0f), 0.0f, pct));
+
+    for (int i = 0; i < PD_MAX_LINES; i++) {
         auto n = juce::String(i + 1);
         l.add(std::make_unique<AudioParameterChoice>(
               ParameterID{Ids::line(i, "wave"), 1}, "Line " + n + " Wave", waves, i == 0 ? 0 : 5));
@@ -162,8 +191,16 @@ void Processor::pullParameters()
     patch.bend_range_semitones = raw("bend_range");
     patch.mod_to_wave          = raw("mod_wave");
     patch.spread               = raw("spread");
+    patch.glide_seconds        = raw("glide");
+    patch.aftertouch_to_wave   = raw("at_wave");
+    patch.aftertouch_to_level  = raw("at_level");
+    patch.filter_mode          = (pd_filter_mode_t)(int)raw("filt_mode");
+    patch.filter_cutoff_hz     = raw("filt_cutoff");
+    patch.filter_resonance     = raw("filt_res");
+    patch.filter_env_depth     = raw("filt_env");
+    patch.filter_key_track     = raw("filt_key");
 
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < PD_MAX_LINES; i++) {
         auto& L = patch.line[i];
         L.wave         = (pd_wave_t)(int)raw(Ids::line(i, "wave"));
         L.octave       = (int)raw(Ids::line(i, "octave"));
@@ -220,6 +257,10 @@ void Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
              * asymmetry of the MIDI wheel needs handling */
             wheelBend = (m.getPitchWheelValue() - 8192) / 8192.0;
             pd_synth_set_bend(&synth, wheelBend);
+        } else if (m.isChannelPressure()) {
+            pd_synth_set_pressure(&synth, m.getChannelPressureValue() / 127.0);
+        } else if (m.isAftertouch()) {
+            pd_synth_set_pressure(&synth, m.getAfterTouchValue() / 127.0);
         } else if (m.isController() && m.getControllerNumber() == 1) {
             wheelMod = m.getControllerValue() / 127.0;
             pd_synth_set_mod(&synth, wheelMod);
@@ -235,6 +276,8 @@ void Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
     voicesNow.store(live);
     bendNow[0].store((float)synth.voice[0].line[0].wave.value);
     bendNow[1].store((float)synth.voice[0].line[1].wave.value);
+    /* also expose the filter's cutoff so the editor can draw where it sits */
+    cutoffNow.store((float)patch.filter_cutoff_hz);
 
     float pk = 0.0f;
     int sp = scopePos.load();
@@ -272,7 +315,7 @@ void Processor::loadPreset(int index)
     };
 
     const pd_patch_t &q = p->patch;
-    set("lines", q.line_count == 2 ? 1.0f : 0.0f);
+    set("lines", (float)(q.line_count - 1) / 3.0f);
     set("mix", (float)q.mix / 2.0f);
     setRanged("noise", (float)q.noise_amount);
     setRanged("vel_wave", (float)q.velocity_to_wave);
@@ -281,7 +324,7 @@ void Processor::loadPreset(int index)
     setRanged("mod_wave", (float)q.mod_to_wave);
     setRanged("spread", (float)q.spread);
 
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < PD_MAX_LINES; i++) {
         const pd_line_params_t &L = q.line[i];
         set(Ids::line(i, "wave"), (float)L.wave / (float)(PD_WAVE_COUNT - 1));
         setRanged(Ids::line(i, "octave"), (float)L.octave);

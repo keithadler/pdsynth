@@ -51,8 +51,11 @@ private:
      * explicit, so an array of them cannot be brace initialised from literals. */
     juce::ComboBox   presetBox;
     juce::TextButton prevPreset, nextPreset;
-    juce::TextButton lineBtn[2];
-    juce::TextButton twoLines;
+    juce::TextButton lineBtn[PD_MAX_LINES];
+    juce::TextButton lineCountBtn;      /* how many lines are running */
+    juce::ComboBox   filterBox;
+    juce::Slider     glide, atWave, cutoff, resonance, filtEnv;
+    juce::Label      glideL, atWaveL, cutoffL, resonanceL, filtEnvL, filterL;
     juce::TextButton envBtn[3];
     juce::TextButton waveBtn[PD_WAVE_COUNT];
     juce::TextButton mixBtn[3];
@@ -66,6 +69,8 @@ private:
 
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
     std::unique_ptr<SA> aDetune, aLevel, aPitchDepth, aNoise, aVelWave, aVelLevel;
+    std::unique_ptr<SA> aGlide, aAtWave, aCutoff, aRes, aFiltEnv;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> aFilter;
 
     static int noteForKey(int keyCode);
     std::set<int> heldKeys;

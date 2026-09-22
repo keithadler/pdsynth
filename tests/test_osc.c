@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include "pd_os.h"
 #include "pd_osc.h"
 
 #ifndef M_PI
@@ -32,7 +33,14 @@ static void ok(int cond, const char *fmt, ...)
     __builtin_va_end(ap);
 }
 
-#define SR   48000.0
+/*
+ * The oscillator is always run oversampled by the voice, and it holds its bend
+ * back when there is not room for the harmonics. Testing it bare at the output
+ * rate makes it hold back much harder than it ever does in use, and then every
+ * "does it brighten" check stops early against a ceiling that real playing
+ * never meets.
+ */
+#define SR   (48000.0 * PD_OVERSAMPLE)
 #define N    8192
 #define F0   200.0
 

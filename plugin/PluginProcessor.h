@@ -84,6 +84,7 @@ public:
     std::atomic<float> bendNow[2] { 0.0f, 0.0f };
     std::atomic<int>   voicesNow  { 0 };
     std::atomic<float> levelNow   { 0.0f };
+    std::atomic<float> cutoffNow  { 8000.0f };
 
     /* A ring of recent output for the scope. */
     static constexpr int kScope = 1024;
