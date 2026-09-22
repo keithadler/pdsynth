@@ -20,6 +20,7 @@ add_library(pdcore STATIC
   src/pd_filter.c
   src/pd_cv.c
   src/pd_fx.c
+  src/pd_sysex.c
   src/pd_synth.c
   src/pd_presets.c)
 target_include_directories(pdcore PUBLIC src)
@@ -55,7 +56,7 @@ target_link_libraries(pd_character PRIVATE pdcore)
 add_test(NAME character COMMAND pd_character)
 
 enable_testing()
-foreach(t osc env voice extras cv fx)
+foreach(t osc env voice extras cv fx sysex)
   add_executable(test_${t} tests/test_${t}.c)
   target_link_libraries(test_${t} PRIVATE pdcore)
   add_test(NAME ${t} COMMAND test_${t})
@@ -153,3 +154,6 @@ if(PDSYNTH_BUILD_PLUGIN)
     pdcore juce::juce_audio_utils juce::juce_gui_basics juce::juce_dsp
     juce::juce_recommended_config_flags)
 endif()
+
+add_executable(pd_sysexcheck tools/pd_sysexcheck.c)
+target_link_libraries(pd_sysexcheck PRIVATE pdcore)
