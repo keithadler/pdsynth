@@ -1,0 +1,80 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  engine:
+    name: engine and tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+    steps:
+      - uses: actions/checkout@v4
+
+      # The synthesis is plain C with no dependencies, so it can be built and
+      # tested on its own, quickly, before anyone waits on JUCE being fetched.
+      - name: Configure
+        shell: bash
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DPDSYNTH_BUILD_PLUGIN=OFF
+
+      - name: Build
+        shell: bash
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Test
+        shell: bash
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      # The bank is generated. If the generator and the generated file have
+      # drifted apart, the file in the tree is not the one anyone can reproduce.
+      - name: The generated bank matches its generator
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cp src/pd_presets.c /tmp/committed.c
+          python3 tools/gen-presets.py
+          diff -u /tmp/committed.c src/pd_presets.c || {
+            echo "src/pd_presets.c does not match tools/gen-presets.py"
+            exit 1
+          }
+
+  plugin:
+    name: plugin (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux,   os: ubuntu-latest }
+          - { name: macos,   os: macos-latest }
+          - { name: windows, os: windows-latest }
+    steps:
+      - uses: actions/checkout@v4
+
+      # JUCE needs these on Linux and finds everything it wants elsewhere.
+      - name: Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libjack-jackd2-dev \
+            libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev \
+            libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
+            libxrender-dev libglu1-mesa-dev mesa-common-dev
+
+      - name: Configure
+        shell: bash
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        shell: bash
+        run: cmake --build build --config Release --parallel 4
+
+      - name: What came out
+        shell: bash
+        run: find build -name "pdsynth*" \( -name "*.vst3" -o -name "*.clap" -o -name "*.component" -o -name "*.lv2" -o -name "*.app" -o -name "*.exe" \) -maxdepth 6 -print
