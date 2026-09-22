@@ -116,6 +116,21 @@ Processor::Processor()
     voices.resize(kPolyphony);
     for (auto& v : voices) pd_voice_init(&v, &patch, sr);
     for (auto& s : scope) s.store(0.0f);
+
+    if (juce::PluginHostType::getPluginLoadedAs() == AudioProcessor::wrapperType_Standalone)
+        openVirtualMidi();
+}
+
+void Processor::openVirtualMidi()
+{
+    virtualIn = juce::MidiInput::createNewDevice("pdsynth", this);
+    if (virtualIn) virtualIn->start();
+}
+
+void Processor::handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& m)
+{
+    uiNotes.addMessageToQueue(
+        m.withTimeStamp(juce::Time::getMillisecondCounterHiRes() * 0.001));
 }
 
 void Processor::prepareToPlay(double sampleRate, int)

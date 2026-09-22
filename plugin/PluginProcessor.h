@@ -36,7 +36,8 @@ struct Ids
     }
 };
 
-class Processor : public juce::AudioProcessor
+class Processor : public juce::AudioProcessor,
+                  private juce::MidiInputCallback
 {
 public:
     Processor();
@@ -91,6 +92,13 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout layout();
     void pullParameters();          // parameters -> the C patch
+
+    /* Standalone only: publish a port called "pdsynth" so a DAW, a keyboard or
+     * a script can play it without anyone opening a settings dialog first. In
+     * a plugin the host already delivers MIDI, so this stays closed. */
+    void openVirtualMidi();
+    void handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage&) override;
+    std::unique_ptr<juce::MidiInput> virtualIn;
 
     pd_patch_t patch {};
     double wheelBend = 0.0, wheelMod = 0.0;   /* where the wheels are now */
