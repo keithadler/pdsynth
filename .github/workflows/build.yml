@@ -90,6 +90,32 @@ jobs:
           grep -q "enable CV as 3 discrete: accepted" /tmp/bus.txt
           grep -q "pitch ch2 = 0.3000" /tmp/bus.txt
 
+      # A Casio voice dump goes out to the plugin's parameters and comes back.
+      # The C tests cannot see this trip, and it is the one a player's patch
+      # makes: parameters are floats with ranges, and a rate of 73 returning as
+      # 72 would quietly alter every patch anybody saved. This check is why the
+      # detune, the end step and the sign of a zero detune got fixed.
+      - name: A voice survives the plugin's parameters
+        shell: bash
+        run: |
+          cmake --build build --config Release --target pd_syxplugcheck --parallel 4
+          BIN=$(find build -name "pd_syxplugcheck" -o -name "pd_syxplugcheck.exe" | head -1)
+          # The tool exits non-zero unless every voice came back identical, so
+          # its own status is the check. Actions runs bash with -e, which would
+          # stop here on a failure and throw away the very output that says
+          # which byte moved, so the status is caught and re-raised after it is
+          # printed.
+          set +e
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a "$BIN" > /tmp/syx.txt 2>&1
+          else
+            "$BIN" > /tmp/syx.txt 2>&1
+          fi
+          status=$?
+          set -e
+          cat /tmp/syx.txt
+          exit $status
+
       # pluginval is what found the AU crash and the heap corruption in Helm.
       - name: pluginval
         if: runner.os == 'macOS' || runner.os == 'Linux'
