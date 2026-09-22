@@ -53,7 +53,9 @@ private:
     juce::TextButton prevPreset, nextPreset;
     juce::TextButton lineBtn[PD_MAX_LINES];
     juce::TextButton lineCountBtn;      /* how many lines are running */
-    juce::ComboBox   filterBox;
+    juce::ComboBox   filterBox, driveBox;
+    juce::Slider     choMix, choDepth, choRate, dlyMix, dlyTime, dlyFb, drvAmount;
+    juce::Label      choMixL, choDepthL, choRateL, dlyMixL, dlyTimeL, dlyFbL, drvAmountL, fxL;
     juce::Slider     glide, atWave, cutoff, resonance, filtEnv;
     juce::Label      glideL, atWaveL, cutoffL, resonanceL, filtEnvL, filterL;
     juce::TextButton envBtn[3];
@@ -70,7 +72,9 @@ private:
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
     std::unique_ptr<SA> aDetune, aLevel, aPitchDepth, aNoise, aVelWave, aVelLevel;
     std::unique_ptr<SA> aGlide, aAtWave, aCutoff, aRes, aFiltEnv;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> aFilter;
+    std::unique_ptr<SA> aChoMix, aChoDepth, aChoRate, aDlyMix, aDlyTime, aDlyFb, aDrvAmount;
+    using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
+    std::unique_ptr<CA> aFilter, aDrive;
 
     static int noteForKey(int keyCode);
     std::set<int> heldKeys;

@@ -88,6 +88,20 @@ Editor::Editor(Processor& p)
     knob(cutoff,     cutoffL,     "CUTOFF",    Theme::accent);
     knob(resonance,  resonanceL,  "RESONANCE", Theme::accent);
     knob(filtEnv,    filtEnvL,    "DCW>CUTOFF",Theme::accent);
+    knob(choMix,     choMixL,     "CHORUS",    Theme::lineTwo);
+    knob(choDepth,   choDepthL,   "DEPTH",     Theme::lineTwo);
+    knob(choRate,    choRateL,    "RATE",      Theme::lineTwo);
+    knob(dlyMix,     dlyMixL,     "DELAY",     Theme::lineOne);
+    knob(dlyTime,    dlyTimeL,    "TIME",      Theme::lineOne);
+    knob(dlyFb,      dlyFbL,      "FEEDBACK",  Theme::lineOne);
+    knob(drvAmount,  drvAmountL,  "DRIVE",     Theme::accent);
+
+    for (int i = 0; i < PD_DRIVE_MODES; i++)
+        driveBox.addItem(juce::String(pd_drive_mode_name((pd_drive_mode_t)i)).toUpperCase(), i + 1);
+    addAndMakeVisible(driveBox);
+    fxL.setText("DRIVE", juce::dontSendNotification);
+    fxL.setFont(Theme::label(10.5f));
+    addAndMakeVisible(fxL);
 
     for (int i = 0; i < PD_FILTER_MODES; i++)
         filterBox.addItem(juce::String(pd_filter_mode_name((pd_filter_mode_t)i)).toUpperCase(), i + 1);
@@ -109,8 +123,15 @@ Editor::Editor(Processor& p)
     aCutoff   = std::make_unique<SA>(proc.apvts, "filt_cutoff", cutoff);
     aRes      = std::make_unique<SA>(proc.apvts, "filt_res", resonance);
     aFiltEnv  = std::make_unique<SA>(proc.apvts, "filt_env", filtEnv);
-    aFilter   = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-                    proc.apvts, "filt_mode", filterBox);
+    aFilter   = std::make_unique<CA>(proc.apvts, "filt_mode", filterBox);
+    aDrive    = std::make_unique<CA>(proc.apvts, "drv_mode", driveBox);
+    aChoMix   = std::make_unique<SA>(proc.apvts, "cho_mix", choMix);
+    aChoDepth = std::make_unique<SA>(proc.apvts, "cho_depth", choDepth);
+    aChoRate  = std::make_unique<SA>(proc.apvts, "cho_rate", choRate);
+    aDlyMix   = std::make_unique<SA>(proc.apvts, "dly_mix", dlyMix);
+    aDlyTime  = std::make_unique<SA>(proc.apvts, "dly_time", dlyTime);
+    aDlyFb    = std::make_unique<SA>(proc.apvts, "dly_fb", dlyFb);
+    aDrvAmount= std::make_unique<SA>(proc.apvts, "drv_amount", drvAmount);
     syncAttachments();
     selectLine(0);
     selectEnv(1);
@@ -432,6 +453,29 @@ void Editor::resized()
     envEditor.setBounds(r);
 
     // right: what it is doing
+    /* the effects live under the meters, across the right column */
+    {
+        auto fxArea = right.removeFromBottom(168);
+        auto place2 = [&](juce::Slider& s2, juce::Label& l2, juce::Rectangle<int> cell) {
+            l2.setBounds(cell.removeFromTop(13));
+            s2.setBounds(cell);
+        };
+        auto r1 = fxArea.removeFromTop(74);
+        place2(choMix,  choMixL,  r1.removeFromLeft(72));
+        place2(choDepth,choDepthL,r1.removeFromLeft(72));
+        place2(choRate, choRateL, r1.removeFromLeft(72));
+        place2(drvAmount, drvAmountL, r1);
+        fxArea.removeFromTop(4);
+        auto r2 = fxArea.removeFromTop(74);
+        place2(dlyMix,  dlyMixL,  r2.removeFromLeft(72));
+        place2(dlyTime, dlyTimeL, r2.removeFromLeft(72));
+        place2(dlyFb,   dlyFbL,   r2.removeFromLeft(72));
+        auto dr = r2;
+        fxL.setBounds(dr.removeFromTop(13));
+        driveBox.setBounds(dr.removeFromTop(24));
+        right.removeFromBottom(10);
+    }
+
     scope.setBounds(right.removeFromTop(juce::jmax(110, right.getHeight() / 4)));
     right.removeFromTop(14);
     const int each = (right.getHeight() - 12) / 2;

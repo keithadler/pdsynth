@@ -19,6 +19,7 @@ add_library(pdcore STATIC
   src/pd_os.c
   src/pd_filter.c
   src/pd_cv.c
+  src/pd_fx.c
   src/pd_synth.c
   src/pd_presets.c)
 target_include_directories(pdcore PUBLIC src)
@@ -54,7 +55,7 @@ target_link_libraries(pd_character PRIVATE pdcore)
 add_test(NAME character COMMAND pd_character)
 
 enable_testing()
-foreach(t osc env voice extras cv)
+foreach(t osc env voice extras cv fx)
   add_executable(test_${t} tests/test_${t}.c)
   target_link_libraries(test_${t} PRIVATE pdcore)
   add_test(NAME ${t} COMMAND test_${t})

@@ -14,11 +14,13 @@
 #include <juce_audio_devices/juce_audio_devices.h>   // MidiMessageCollector
 #include <atomic>
 #include <vector>
+#include <memory>
 
 extern "C" {
 #include "pd_voice.h"
 #include "pd_synth.h"
 #include "pd_cv.h"
+#include "pd_fx.h"
 #include "pd_presets.h"
 }
 
@@ -107,6 +109,10 @@ private:
     double wheelBend = 0.0, wheelMod = 0.0;   /* where the wheels are now */
     pd_synth_t synth {};
     pd_cv_t    cv {};
+    /* Heap allocated because the delay line is two seconds of stereo. */
+    struct FxDeleter { void operator()(pd_fx_t* p) const { pd_fx_destroy(p); } };
+    std::unique_ptr<pd_fx_t, FxDeleter> fx;
+    pd_fx_params_t fxp {};
     double sr = 48000.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Processor)

@@ -69,6 +69,37 @@ juce::AudioProcessorValueTreeState::ParameterLayout Processor::layout()
     l.add(std::make_unique<AudioParameterFloat>(ParameterID{"filt_key", 1}, "Cutoff Key Track",
               NormalisableRange<float>(0.0f, 1.0f), 0.0f, pct));
 
+    /* Chorus, delay and drive. The hardware reissue has a chorus, and a synth
+     * that arrives completely dry sounds thinner than the box beside it. */
+    auto ms = AudioParameterFloatAttributes().withStringFromValueFunction(
+        [](float v, int) { return juce::String(v, 1) + " ms"; });
+    auto hz2 = AudioParameterFloatAttributes().withStringFromValueFunction(
+        [](float v, int) { return juce::String(v, 2) + " Hz"; });
+    auto secs2 = AudioParameterFloatAttributes().withStringFromValueFunction(
+        [](float v, int) { return juce::String(juce::roundToInt(v * 1000.0f)) + " ms"; });
+    l.add(std::make_unique<AudioParameterFloat>(ParameterID{"cho_mix", 1}, "Chorus",
+              NormalisableRange<float>(0.0f, 1.0f), 0.0f, pct));
+    l.add(std::make_unique<AudioParameterFloat>(ParameterID{"cho_depth", 1}, "Chorus Depth",
+              NormalisableRange<float>(0.2f, 12.0f, 0.1f), 3.2f, ms));
+    l.add(std::make_unique<AudioParameterFloat>(ParameterID{"cho_rate", 1}, "Chorus Rate",
+              NormalisableRange<float>(0.05f, 6.0f, 0.01f), 0.42f, hz2));
+    l.add(std::make_unique<AudioParameterFloat>(ParameterID{"cho_spread", 1}, "Chorus Spread",
+              NormalisableRange<float>(0.0f, 1.0f), 0.7f, pct));
+    l.add(std::make_unique<AudioParameterFloat>(ParameterID{"dly_mix", 1}, "Delay",
+              NormalisableRange<float>(0.0f, 1.0f), 0.0f, pct));
+    l.add(std::make_unique<AudioParameterFloat>(ParameterID{"dly_time", 1}, "Delay Time",
+              NormalisableRange<float>(0.01f, 2.0f, 0.001f, 0.4f), 0.32f, secs2));
+    l.add(std::make_unique<AudioParameterFloat>(ParameterID{"dly_fb", 1}, "Delay Feedback",
+              NormalisableRange<float>(0.0f, 1.0f), 0.32f, pct));
+    l.add(std::make_unique<AudioParameterFloat>(ParameterID{"dly_tone", 1}, "Delay Tone",
+              NormalisableRange<float>(0.0f, 1.0f), 0.45f, pct));
+    StringArray drives;
+    for (int i = 0; i < PD_DRIVE_MODES; i++)
+        drives.add(juce::String(pd_drive_mode_name((pd_drive_mode_t)i)));
+    l.add(std::make_unique<AudioParameterChoice>(ParameterID{"drv_mode", 1}, "Drive", drives, 0));
+    l.add(std::make_unique<AudioParameterFloat>(ParameterID{"drv_amount", 1}, "Drive Amount",
+              NormalisableRange<float>(0.0f, 1.0f), 0.3f, pct));
+
     for (int i = 0; i < PD_MAX_LINES; i++) {
         auto n = juce::String(i + 1);
         l.add(std::make_unique<AudioParameterChoice>(
@@ -153,6 +184,8 @@ Processor::Processor()
     loadPreset(0);
 
     pd_synth_init(&synth, &patch, sr, kPolyphony);
+    pd_fx_params_init(&fxp);
+    fx.reset(pd_fx_create(sr));
     for (auto& s : scope) s.store(0.0f);
 
     if (juce::PluginHostType::getPluginLoadedAs() == AudioProcessor::wrapperType_Standalone)
@@ -177,6 +210,7 @@ void Processor::prepareToPlay(double sampleRate, int)
     uiNotes.reset(sampleRate);
     pullParameters();
     pd_synth_init(&synth, &patch, sr, kPolyphony);
+    fx.reset(pd_fx_create(sr));
 }
 
 bool Processor::isBusesLayoutSupported(const BusesLayout& l) const
@@ -214,6 +248,17 @@ void Processor::pullParameters()
     patch.filter_env_depth     = raw("filt_env");
     patch.filter_key_track     = raw("filt_key");
 
+    fxp.chorus_mix      = raw("cho_mix");
+    fxp.chorus_depth_ms = raw("cho_depth");
+    fxp.chorus_rate_hz  = raw("cho_rate");
+    fxp.chorus_spread   = raw("cho_spread");
+    fxp.delay_mix       = raw("dly_mix");
+    fxp.delay_time_s    = raw("dly_time");
+    fxp.delay_feedback  = raw("dly_fb");
+    fxp.delay_tone      = raw("dly_tone");
+    fxp.drive_mode      = (pd_drive_mode_t)(int)raw("drv_mode");
+    fxp.drive_amount    = raw("drv_amount");
+
     for (int i = 0; i < PD_MAX_LINES; i++) {
         auto& L = patch.line[i];
         L.wave         = (pd_wave_t)(int)raw(Ids::line(i, "wave"));
@@ -250,8 +295,13 @@ void Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
     auto emit = [&](int pos) {
         double l = 0, r = 0;
         pd_synth_render(&synth, &l, &r);
-        buffer.setSample(0, pos, (float)(l * 0.25));
-        if (stereo) buffer.setSample(1, pos, (float)(r * 0.25));
+        l *= 0.25; r *= 0.25;
+        /* The effects run here, at the output rate and after the voices are
+         * summed: none of them needs the oversampled stream, and running them
+         * there would cost four times as much for nothing. */
+        if (fx) pd_fx_process(fx.get(), &fxp, &l, &r);
+        buffer.setSample(0, pos, (float)l);
+        if (stereo) buffer.setSample(1, pos, (float)r);
     };
 
     int pos = 0;

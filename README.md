@@ -78,6 +78,16 @@ reissue has neither. Noise here shakes how far the phase is bent rather than
 how loud the line is: shaking the amplitude is ring modulation with a noise
 source, and at full depth it removes most of the note.
 
+**Chorus, delay and drive.** The hardware reissue has a chorus, and a synth
+that arrives completely dry sounds thinner than the box standing next to it,
+whatever its oscillators are doing. The chorus is three taps of the same slow
+cycle with the sides moved apart; the delay's repeats darken as they go,
+because a repeat that keeps all its top end stops sounding like distance and
+starts sounding like a second instrument; and the drive offers a soft knee, a
+hard clip and a fold. All written here rather than borrowed: a chorus is a
+delay that wobbles and the suites worth reading for approach are GPL, which
+would follow the code home.
+
 **Twenty presets**, original designs built from published technique. No
 parameter list is copied from anyone and Casio's ROM data is not here.
 

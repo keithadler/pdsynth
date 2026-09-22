@@ -16,9 +16,13 @@
 #include "pd_voice.h"
 #include "pd_presets.h"
 #include "pd_synth.h"
+#include "pd_fx.h"
 
 #define SR       48000.0
 #define POLYPHONY 8
+
+static pd_fx_params_t g_fxp;
+static pd_fx_t *g_fx;
 
 typedef pd_synth_t poly_t;
 static void poly_init(poly_t *p, const pd_patch_t *patch) { pd_synth_init(p, patch, SR, POLYPHONY); }
@@ -28,6 +32,7 @@ static void poly_next2(poly_t *p, double *l, double *r)
 {
     pd_synth_render(p, l, r);
     *l *= 0.3; *r *= 0.3;
+    if (g_fx) pd_fx_process(g_fx, &g_fxp, l, r);
 }
 
 /* an eight step envelope, written the way a CZ panel would show it */
@@ -187,6 +192,17 @@ int main(int argc, char **argv)
     }
     const int units = pd_preset_count() > DEMO_COUNT ? pd_preset_count() : DEMO_COUNT;
     long cap = (long)(PHRASE_SECONDS * SR) * units + (long)SR * units;
+    pd_fx_params_init(&g_fxp);
+    g_fx = pd_fx_create(SR);
+    /* "fx" plays the bank through a chorus and a delay, which is how anyone
+     * would actually run it, and is the difference between a demonstration and
+     * a measurement. */
+    if (argc > 3 && strcmp(argv[3], "fx") == 0) {
+        g_fxp.chorus_mix = 0.45;
+        g_fxp.delay_mix = 0.22;
+        g_fxp.delay_time_s = 0.28;
+        g_fxp.delay_feedback = 0.3;
+    }
     float *buf = calloc((size_t)cap, sizeof *buf);
     if (!buf) return 1;
 
@@ -230,6 +246,7 @@ int main(int argc, char **argv)
     }
     fclose(f);
     printf("wrote %s (%.1f s, gain %.2fx)\n", argv[1], n / SR, g);
+    pd_fx_destroy(g_fx);
     free(buf);
     return 0;
 }
