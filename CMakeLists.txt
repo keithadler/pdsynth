@@ -1,25 +1,23 @@
-cmake_minimum_required(VERSION 3.16)
-project(pdsynth C)
+cmake_minimum_required(VERSION 3.22)
+project(pdsynth VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
-set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
-add_compile_options(-Wall -Wextra)
 
-if(APPLE)
-  set(PD_MIDI src/pd_midi_coremidi.c)
-else()
-  set(PD_MIDI src/pd_midi_null.c)
-endif()
-
+# ---------------------------------------------------------------------------
+# The engine is plain C and knows nothing about plugins, hosts or windows. It
+# is the same code the tests exercise and the same code every format runs.
+# ---------------------------------------------------------------------------
 add_library(pdcore STATIC
   src/pd_osc.c
   src/pd_env.c
-  src/pd_voice.c
-  ${PD_MIDI})
+  src/pd_voice.c)
 target_include_directories(pdcore PUBLIC src)
+target_compile_options(pdcore PRIVATE -Wall -Wextra)
 if(NOT WIN32)
   target_link_libraries(pdcore PUBLIC m)
 endif()
@@ -34,26 +32,84 @@ foreach(t osc env voice)
   add_test(NAME ${t} COMMAND test_${t})
 endforeach()
 
-# --- Standalone: a window, a keyboard, and the two lines drawn as they move ---
-find_package(SDL2 QUIET)
-if(SDL2_FOUND OR TARGET SDL2::SDL2)
-  add_library(pdpanel STATIC standalone/pd_panel.c)
-  target_include_directories(pdpanel PUBLIC standalone ${SDL2_INCLUDE_DIRS})
-  if(TARGET SDL2::SDL2)
-    target_link_libraries(pdpanel PUBLIC pdcore SDL2::SDL2)
-  else()
-    target_link_libraries(pdpanel PUBLIC pdcore ${SDL2_LIBRARIES})
-  endif()
+# ---------------------------------------------------------------------------
+# The plugin. One editor, every format, three platforms.
+# ---------------------------------------------------------------------------
+option(PDSYNTH_BUILD_PLUGIN "Build the plugin and standalone" ON)
+if(PDSYNTH_BUILD_PLUGIN)
+  include(FetchContent)
 
-  add_executable(pdsynth standalone/pd_standalone.c)
-  target_link_libraries(pdsynth PRIVATE pdpanel)
-  if(APPLE)
-    target_link_libraries(pdsynth PRIVATE "-framework CoreMIDI" "-framework CoreFoundation")
-  endif()
+  FetchContent_Declare(JUCE
+    GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
+    GIT_TAG        8.0.15
+    GIT_SHALLOW    TRUE)
+  FetchContent_MakeAvailable(JUCE)
 
-  # Draws the panel with no window, so it can be looked at
-  add_executable(pd_shot tools/pd_shot.c)
-  target_link_libraries(pd_shot PRIVATE pdpanel)
-else()
-  message(STATUS "SDL2 not found: building without the standalone")
+  # CLAP is not a JUCE format, it is bolted on. No tagged release of the
+  # extensions supports JUCE 8, so this pins the commit on main that does,
+  # which is the same pin the Helm revival uses.
+  FetchContent_Declare(clap-juce-extensions
+    GIT_REPOSITORY https://github.com/free-audio/clap-juce-extensions.git
+    GIT_TAG        main
+    GIT_SHALLOW    TRUE)
+  FetchContent_MakeAvailable(clap-juce-extensions)
+
+  juce_add_plugin(pdsynth
+    COMPANY_NAME            "Keith Adler"
+    PLUGIN_MANUFACTURER_CODE Kadr
+    PLUGIN_CODE             Pdsy
+    FORMATS                 AU VST3 LV2 Standalone
+    LV2URI                  "https://github.com/keithadler/pdsynth"
+    IS_SYNTH                TRUE
+    NEEDS_MIDI_INPUT        TRUE
+    NEEDS_MIDI_OUTPUT       FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS TRUE
+    COPY_PLUGIN_AFTER_BUILD TRUE
+    PRODUCT_NAME            "pdsynth")
+
+  target_sources(pdsynth PRIVATE
+    plugin/PluginProcessor.cpp
+    plugin/PluginEditor.cpp
+    plugin/EnvelopeEditor.cpp
+    plugin/WaveDisplay.cpp
+    plugin/Theme.cpp)
+
+  target_compile_definitions(pdsynth PUBLIC
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_VST3_CAN_REPLACE_VST2=0
+    JUCE_DISPLAY_SPLASH_SCREEN=0)
+
+  target_link_libraries(pdsynth PRIVATE
+    pdcore
+    juce::juce_audio_utils
+    juce::juce_dsp
+    PUBLIC
+    juce::juce_recommended_config_flags
+    juce::juce_recommended_lto_flags)
+
+  clap_juce_extensions_plugin(TARGET pdsynth
+    CLAP_ID "com.keithadler.pdsynth"
+    CLAP_FEATURES instrument synthesizer)
+
+  # Draws the editor with no window, so it can be looked at rather than assumed
+  juce_add_console_app(pd_uishot PRODUCT_NAME "pd_uishot")
+  target_sources(pd_uishot PRIVATE
+    tools/pd_uishot.cpp
+    plugin/PluginProcessor.cpp
+    plugin/PluginEditor.cpp
+    plugin/EnvelopeEditor.cpp
+    plugin/WaveDisplay.cpp
+    plugin/Theme.cpp)
+  target_compile_definitions(pd_uishot PRIVATE
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+    JUCE_STANDALONE_APPLICATION=1
+    # the shot has to pump the message loop so the editor's timers run and the
+    # meters hold real numbers rather than zeroes
+    JUCE_MODAL_LOOPS_PERMITTED=1
+    JucePlugin_Name="pdsynth" JucePlugin_IsSynth=1)
+  target_include_directories(pd_uishot PRIVATE plugin)
+  target_link_libraries(pd_uishot PRIVATE
+    pdcore juce::juce_audio_utils juce::juce_gui_basics juce::juce_dsp
+    juce::juce_recommended_config_flags)
 endif()

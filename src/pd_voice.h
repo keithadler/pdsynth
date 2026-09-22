@@ -44,6 +44,8 @@ typedef struct {
     double           noise_amount;  /* for PD_MIX_NOISE, 0 to 1 */
     double           velocity_to_wave;   /* how much playing harder opens it */
     double           velocity_to_level;
+    double           bend_range_semitones;  /* what a full wheel is worth */
+    double           mod_to_wave;           /* the mod wheel opening the waveform */
 } pd_patch_t;
 
 typedef struct {
@@ -60,6 +62,8 @@ typedef struct {
     double      velocity;    /* 0 to 1 */
     int         active;
     uint32_t    noise_state;
+    double      bend;        /* -1 to 1, the wheel */
+    double      mod;         /*  0 to 1 */
 } pd_voice_t;
 
 void   pd_patch_init(pd_patch_t *p);
@@ -67,6 +71,10 @@ void   pd_voice_init(pd_voice_t *v, const pd_patch_t *patch, double sample_rate)
 void   pd_voice_note_on(pd_voice_t *v, int midi_note, double velocity);
 void   pd_voice_note_off(pd_voice_t *v);
 double pd_voice_next(pd_voice_t *v);
+
+/* The wheels. Safe to call while a note is sounding, which is the point. */
+void   pd_voice_set_bend(pd_voice_t *v, double minus_one_to_one);
+void   pd_voice_set_mod(pd_voice_t *v, double zero_to_one);
 int    pd_voice_active(const pd_voice_t *v);
 
 double pd_note_to_hz(int midi_note);

@@ -29,6 +29,8 @@ void pd_patch_init(pd_patch_t *p)
     }
     p->velocity_to_level = 1.0;
     p->velocity_to_wave = 0.0;
+    p->bend_range_semitones = 2.0;
+    p->mod_to_wave = 0.0;
 }
 
 void pd_voice_init(pd_voice_t *v, const pd_patch_t *patch, double sample_rate)
@@ -56,6 +58,16 @@ void pd_voice_note_on(pd_voice_t *v, int midi_note, double velocity)
         pd_env_key_down(&v->line[i].wave);
         pd_env_key_down(&v->line[i].amp);
     }
+}
+
+void pd_voice_set_bend(pd_voice_t *v, double b)
+{
+    v->bend = b < -1.0 ? -1.0 : (b > 1.0 ? 1.0 : b);
+}
+
+void pd_voice_set_mod(pd_voice_t *v, double m)
+{
+    v->mod = m < 0.0 ? 0.0 : (m > 1.0 ? 1.0 : m);
 }
 
 void pd_voice_note_off(pd_voice_t *v)
@@ -93,7 +105,8 @@ static double run_line(pd_voice_t *v, int i, double bend_offset)
     double pitch_rest = lp->pitch_env.level[lp->pitch_env.sustain_step] / 99.0;
     double semis = lp->octave * 12.0 + lp->semitones
                  + lp->detune_cents / 100.0
-                 + (pitch_env - pitch_rest) * lp->pitch_env_depth_semitones;
+                 + (pitch_env - pitch_rest) * lp->pitch_env_depth_semitones
+                 + v->bend * v->patch->bend_range_semitones;
     double hz = v->base_hz * pow(2.0, semis / 12.0);
     pd_osc_set_freq(&l->osc, hz, v->sample_rate);
 
@@ -101,7 +114,7 @@ static double run_line(pd_voice_t *v, int i, double bend_offset)
      * there is to opening a filter. */
     double bend = wave_env * (1.0 - v->patch->velocity_to_wave
                               + v->patch->velocity_to_wave * v->velocity);
-    bend += bend_offset;
+    bend += bend_offset + v->mod * v->patch->mod_to_wave;
     if (bend < 0.0) bend = 0.0;
     if (bend > 1.0) bend = 1.0;
     double amp = amp_env * lp->level;
