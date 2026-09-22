@@ -151,6 +151,29 @@ double pd_distort(double phase, pd_wave_t wave, double amount)
     }
 }
 
+/*
+ * `cycles` is the oscillator's increment: cycles per sample at whatever rate it
+ * is actually running, which is the oversampled one. Half of one over that is
+ * how many harmonics of this note fit underneath that Nyquist, and harmonics
+ * that do not fit do not vanish, they fold.
+ *
+ * PD_BEND_FULL and PD_BEND_MIN were chosen by measuring off-harmonic energy
+ * across the keyboard and moving them until the top two octaves came clean
+ * without the middle of the keyboard losing its character.
+ */
+#define PD_BEND_FULL 300.0   /* harmonics of room needed for an unheld bend */
+#define PD_BEND_MIN   0.30   /* never quieter in character than this */
+
+double pd_bend_ceiling(double cycles_per_sample, double unused)
+{
+    (void)unused;
+    if (cycles_per_sample <= 1e-9) return 1.0;
+    const double room = 0.5 / cycles_per_sample;
+    if (room >= PD_BEND_FULL) return 1.0;
+    const double f = room / PD_BEND_FULL;
+    return f < PD_BEND_MIN ? PD_BEND_MIN : f;
+}
+
 double pd_osc_next(pd_osc_t *o, pd_wave_t wave, double amount)
 {
     double p = o->phase;
@@ -158,6 +181,13 @@ double pd_osc_next(pd_osc_t *o, pd_wave_t wave, double amount)
 
     if (amount < 0.0) amount = 0.0;
     if (amount > 1.0) amount = 1.0;
+
+    /* The oscillator knows its own frequency, so it can hold the bend back
+     * itself rather than relying on every caller to remember. */
+    {
+        const double ceiling = pd_bend_ceiling(o->increment, 1.0);
+        if (amount > ceiling) amount = ceiling;
+    }
 
     if (wave >= PD_RESO_SAW) {
         /*
@@ -167,7 +197,11 @@ double pd_osc_next(pd_osc_t *o, pd_wave_t wave, double amount)
          * pitch does not. Keeping it a whole number keeps the window and the
          * sine locked together, which is what stops it buzzing.
          */
+        /* A resonant waveform states its harmonic outright, so it can be
+         * capped exactly: never ask for a partial that will not fit. */
         double harmonic = (double)pd_resonant_harmonic(amount);
+        const double top = 0.45 / (o->increment > 1e-9 ? o->increment : 1e-9);
+        if (harmonic > top) harmonic = floor(top) < 1.0 ? 1.0 : floor(top);
         out = sin(2.0 * M_PI * p * harmonic) * pd_window(p, wave);
     } else {
         out = sin(2.0 * M_PI * pd_distort(p, wave, amount));

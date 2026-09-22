@@ -17,6 +17,7 @@
 
 extern "C" {
 #include "pd_voice.h"
+#include "pd_synth.h"
 #include "pd_presets.h"
 }
 
@@ -102,7 +103,7 @@ private:
 
     pd_patch_t patch {};
     double wheelBend = 0.0, wheelMod = 0.0;   /* where the wheels are now */
-    std::vector<pd_voice_t> voices;
+    pd_synth_t synth {};
     double sr = 48000.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Processor)

@@ -31,6 +31,7 @@ void pd_patch_init(pd_patch_t *p)
     p->velocity_to_wave = 0.0;
     p->bend_range_semitones = 2.0;
     p->mod_to_wave = 0.0;
+    p->spread = 0.45;
 }
 
 void pd_voice_init(pd_voice_t *v, const pd_patch_t *patch, double sample_rate)
@@ -38,12 +39,20 @@ void pd_voice_init(pd_voice_t *v, const pd_patch_t *patch, double sample_rate)
     memset(v, 0, sizeof(*v));
     v->patch = patch;
     v->sample_rate = sample_rate > 0 ? sample_rate : 48000.0;
+    v->inner_rate  = v->sample_rate * PD_OVERSAMPLE;
     v->noise_state = 0x1234567u;
+    pd_decimator_init(&v->decim, v->sample_rate);
+    /* a one pole high pass at about 8 Hz: below anything anyone plays, and
+     * gentle enough that it does not touch the shape of a bass note */
+    v->dc_r = 1.0 - 2.0 * 3.14159265358979323846 * 8.0 / v->sample_rate;
+    v->dc_x1 = v->dc_y1 = 0.0;
     for (int i = 0; i < 2; i++) {
         pd_osc_init(&v->line[i].osc);
-        pd_env_init(&v->line[i].pitch, &patch->line[i].pitch_env, v->sample_rate);
-        pd_env_init(&v->line[i].wave,  &patch->line[i].wave_env,  v->sample_rate);
-        pd_env_init(&v->line[i].amp,   &patch->line[i].amp_env,   v->sample_rate);
+        /* the envelopes run at the inner rate too, or a patch would play four
+         * times faster than it was written */
+        pd_env_init(&v->line[i].pitch, &patch->line[i].pitch_env, v->inner_rate);
+        pd_env_init(&v->line[i].wave,  &patch->line[i].wave_env,  v->inner_rate);
+        pd_env_init(&v->line[i].amp,   &patch->line[i].amp_env,   v->inner_rate);
     }
 }
 
@@ -108,7 +117,7 @@ static double run_line(pd_voice_t *v, int i, double bend_offset)
                  + (pitch_env - pitch_rest) * lp->pitch_env_depth_semitones
                  + v->bend * v->patch->bend_range_semitones;
     double hz = v->base_hz * pow(2.0, semis / 12.0);
-    pd_osc_set_freq(&l->osc, hz, v->sample_rate);
+    pd_osc_set_freq(&l->osc, hz, v->inner_rate);
 
     /* Playing harder opens the waveform, which on a CZ is the closest thing
      * there is to opening a filter. */
@@ -123,9 +132,10 @@ static double run_line(pd_voice_t *v, int i, double bend_offset)
     return pd_osc_next(&l->osc, lp->wave, bend) * amp;
 }
 
-double pd_voice_next(pd_voice_t *v)
+/* One sample at the inner rate, with the two lines kept apart so the caller
+ * can place them. */
+static void voice_inner_lines(pd_voice_t *v, double *outA, double *outB)
 {
-    if (!v->active) return 0.0;
 
     /*
      * Noise modulation shakes how far the phase is bent, not how loud the line
@@ -140,20 +150,12 @@ double pd_voice_next(pd_voice_t *v)
 
     double a = run_line(v, 0, bend_noise);
     double b = (v->patch->line_count > 1) ? run_line(v, 1, 0.0) : 0.0;
-    double out;
 
-    switch (v->patch->mix) {
-    case PD_MIX_RING:
-        /* the second line becomes a modulator rather than a voice of its own */
-        out = (v->patch->line_count > 1) ? a * b : a;
-        break;
-    case PD_MIX_NOISE:
-        /* the shaking already happened, inside the line */
-        out = a + b;
-        break;
-    default:
-        out = a + b;
-        break;
+    if (v->patch->mix == PD_MIX_RING) {
+        /* the second line is a modulator rather than a voice of its own, so
+         * there is only one signal to place */
+        a = (v->patch->line_count > 1) ? a * b : a;
+        b = 0.0;
     }
 
     /* a voice is done when every line it uses has finished its amplitude */
@@ -161,6 +163,43 @@ double pd_voice_next(pd_voice_t *v)
     for (int i = 0; i < v->patch->line_count; i++)
         if (!pd_env_finished(&v->line[i].amp)) alive = 1;
     if (!alive) v->active = 0;
+
+    *outA = a;
+    *outB = b;
+}
+
+void pd_voice_next_inner(pd_voice_t *v, double *left, double *right)
+{
+    if (!v->active) { *left = *right = 0.0; return; }
+    double a, b;
+    voice_inner_lines(v, &a, &b);
+
+    /* Equal gain either side of centre. A CZ is a mono box, but two lines
+     * detuned against each other are begging to be placed apart, and a synth
+     * that arrives in one spot in the middle sounds smaller than it is. */
+    const double s = v->patch->spread;
+    const double la = 0.5 + 0.5 * s, ra = 0.5 - 0.5 * s;
+    *left  = a * la + b * ra;
+    *right = a * ra + b * la;
+}
+
+double pd_voice_next(pd_voice_t *v)
+{
+    if (!v->active) return 0.0;
+    /* Run fast, filter, keep one. Filtering every inner sample rather than
+     * only the one that is kept is the whole point: what is discarded is
+     * exactly what would have folded back into the audible band. */
+    for (int i = 0; i < PD_OVERSAMPLE; i++) {
+        double a, b;
+        voice_inner_lines(v, &a, &b);
+        pd_decimator_push(&v->decim, a + b);
+    }
+    double out = pd_decimator_read(&v->decim);
+
+    const double hp = out - v->dc_x1 + v->dc_r * v->dc_y1;
+    v->dc_x1 = out;
+    v->dc_y1 = hp;
+    out = hp;
 
     if (out > 1.0) out = 1.0;
     if (out < -1.0) out = -1.0;

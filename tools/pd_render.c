@@ -15,33 +15,19 @@
 #include <string.h>
 #include "pd_voice.h"
 #include "pd_presets.h"
+#include "pd_synth.h"
 
 #define SR       48000.0
 #define POLYPHONY 8
 
-typedef struct { pd_voice_t v[POLYPHONY]; const pd_patch_t *patch; } poly_t;
-
-static void poly_init(poly_t *p, const pd_patch_t *patch)
+typedef pd_synth_t poly_t;
+static void poly_init(poly_t *p, const pd_patch_t *patch) { pd_synth_init(p, patch, SR, POLYPHONY); }
+static void poly_on(poly_t *p, int note, double vel) { pd_synth_note_on(p, note, vel); }
+static void poly_off(poly_t *p, int note) { pd_synth_note_off(p, note); }
+static void poly_next2(poly_t *p, double *l, double *r)
 {
-    p->patch = patch;
-    for (int i = 0; i < POLYPHONY; i++) pd_voice_init(&p->v[i], patch, SR);
-}
-static void poly_on(poly_t *p, int note, double vel)
-{
-    for (int i = 0; i < POLYPHONY; i++)
-        if (!pd_voice_active(&p->v[i])) { pd_voice_note_on(&p->v[i], note, vel); return; }
-    pd_voice_note_on(&p->v[0], note, vel);   /* steal the oldest slot */
-}
-static void poly_off(poly_t *p, int note)
-{
-    for (int i = 0; i < POLYPHONY; i++)
-        if (pd_voice_active(&p->v[i]) && p->v[i].note == note) pd_voice_note_off(&p->v[i]);
-}
-static double poly_next(poly_t *p)
-{
-    double s = 0;
-    for (int i = 0; i < POLYPHONY; i++) s += pd_voice_next(&p->v[i]);
-    return s * 0.3;
+    pd_synth_render(p, l, r);
+    *l *= 0.3; *r *= 0.3;
 }
 
 /* an eight step envelope, written the way a CZ panel would show it */
@@ -161,7 +147,7 @@ static long render_demo(const demo_t *d, float *out, long cap)
             if (i == (long)(kPhrase[e].at * SR)) poly_on(&poly, kPhrase[e].note, kPhrase[e].vel);
             if (i == (long)((kPhrase[e].at + kPhrase[e].len) * SR)) poly_off(&poly, kPhrase[e].note);
         }
-        out[i] = (float)poly_next(&poly);
+        double l, r; poly_next2(&poly, &l, &r); out[i] = (float)(0.5 * (l + r));
     }
     return total;
 }
@@ -182,7 +168,7 @@ static int render_bank(float *out, long cap, long *lengths)
                 if (k == (long)(kPhrase[e].at * SR)) poly_on(&poly, kPhrase[e].note, kPhrase[e].vel);
                 if (k == (long)((kPhrase[e].at + kPhrase[e].len) * SR)) poly_off(&poly, kPhrase[e].note);
             }
-            out[n + k] = (float)poly_next(&poly);
+            double l, r; poly_next2(&poly, &l, &r); out[n + k] = (float)(0.5 * (l + r));
         }
         fprintf(stderr, "  %2d. %-16s %s\n", i + 1, pr->name, pr->family);
         n += total + (long)(0.35 * SR);

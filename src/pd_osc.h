@@ -45,6 +45,23 @@ typedef struct {
     double increment;   /* cycles per sample */
 } pd_osc_t;
 
+/*
+ * How much bend a note can carry before it starts folding.
+ *
+ * Bending the phase generates bandwidth, and how much depends on how far it is
+ * bent. Low down there is room for all of it. Near the top of the keyboard
+ * there is not, and what does not fit does not disappear: it folds back onto
+ * frequencies that are not multiples of the note, which the ear hears as
+ * sourness. Oversampling buys headroom but cannot buy an unlimited amount, so
+ * above a point the bend itself has to give.
+ *
+ * This is not a compromise forced by software. A CZ does the same thing, for
+ * the same reason, and so does every DX7 patch that scales its modulators down
+ * as it climbs: the top of the keyboard gets less of the effect, and it is the
+ * difference between bright and shrill.
+ */
+double pd_bend_ceiling(double hz, double sample_rate);
+
 void   pd_osc_init(pd_osc_t *o);
 void   pd_osc_set_freq(pd_osc_t *o, double hz, double sample_rate);
 

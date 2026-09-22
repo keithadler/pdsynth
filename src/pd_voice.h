@@ -18,6 +18,7 @@
 
 #include "pd_osc.h"
 #include "pd_env.h"
+#include "pd_os.h"
 
 typedef struct {
     pd_wave_t       wave;
@@ -46,6 +47,7 @@ typedef struct {
     double           velocity_to_level;
     double           bend_range_semitones;  /* what a full wheel is worth */
     double           mod_to_wave;           /* the mod wheel opening the waveform */
+    double           spread;                /* 0 mono, 1 lines hard apart */
 } pd_patch_t;
 
 typedef struct {
@@ -64,6 +66,16 @@ typedef struct {
     uint32_t    noise_state;
     double      bend;        /* -1 to 1, the wheel */
     double      mod;         /*  0 to 1 */
+
+    /* Everything inside the voice runs at PD_OVERSAMPLE times the rate it is
+     * asked for, and pd_voice_next filters and returns one sample in four. */
+    pd_decimator_t decim;
+    double      inner_rate;
+
+    /* A bent sine is not symmetric about zero, so most of these waveforms
+     * carry a steady offset. One voice of it is inaudible; sixteen of them
+     * stacked is wasted headroom and a thump on every note. */
+    double      dc_x1, dc_y1, dc_r;
 } pd_voice_t;
 
 void   pd_patch_init(pd_patch_t *p);
@@ -71,6 +83,15 @@ void   pd_voice_init(pd_voice_t *v, const pd_patch_t *patch, double sample_rate)
 void   pd_voice_note_on(pd_voice_t *v, int midi_note, double velocity);
 void   pd_voice_note_off(pd_voice_t *v);
 double pd_voice_next(pd_voice_t *v);
+
+/*
+ * One sample at the oversampled rate, the two lines placed across the stereo
+ * field. The filtering and the decimating belong to whatever is mixing the
+ * voices, not to each voice: decimation is linear, so filtering the sum once
+ * gives the same answer as filtering sixteen voices separately and costs a
+ * sixteenth as much.
+ */
+void   pd_voice_next_inner(pd_voice_t *v, double *left, double *right);
 
 /* The wheels. Safe to call while a note is sounding, which is the point. */
 void   pd_voice_set_bend(pd_voice_t *v, double minus_one_to_one);

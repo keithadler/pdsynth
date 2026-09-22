@@ -37,6 +37,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout Processor::layout()
               NormalisableRange<float>(0.0f, 24.0f, 1.0f), 2.0f));
     l.add(std::make_unique<AudioParameterFloat>(ParameterID{"mod_wave", 1}, "Mod to Wave",
               NormalisableRange<float>(0.0f, 1.0f), 0.3f));
+    l.add(std::make_unique<AudioParameterFloat>(ParameterID{"spread", 1}, "Stereo Spread",
+              NormalisableRange<float>(0.0f, 1.0f), 0.45f, pct));
 
     for (int i = 0; i < 2; i++) {
         auto n = juce::String(i + 1);
@@ -113,8 +115,7 @@ Processor::Processor()
 
     loadPreset(0);
 
-    voices.resize(kPolyphony);
-    for (auto& v : voices) pd_voice_init(&v, &patch, sr);
+    pd_synth_init(&synth, &patch, sr, kPolyphony);
     for (auto& s : scope) s.store(0.0f);
 
     if (juce::PluginHostType::getPluginLoadedAs() == AudioProcessor::wrapperType_Standalone)
@@ -138,7 +139,7 @@ void Processor::prepareToPlay(double sampleRate, int)
     sr = sampleRate;
     uiNotes.reset(sampleRate);
     pullParameters();
-    for (auto& v : voices) pd_voice_init(&v, &patch, sr);
+    pd_synth_init(&synth, &patch, sr, kPolyphony);
 }
 
 bool Processor::isBusesLayoutSupported(const BusesLayout& l) const
@@ -160,6 +161,7 @@ void Processor::pullParameters()
     patch.velocity_to_level= raw("vel_level");
     patch.bend_range_semitones = raw("bend_range");
     patch.mod_to_wave          = raw("mod_wave");
+    patch.spread               = raw("spread");
 
     for (int i = 0; i < 2; i++) {
         auto& L = patch.line[i];
@@ -193,58 +195,46 @@ void Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
     const int n = buffer.getNumSamples();
     buffer.clear();
 
+    const bool stereo = buffer.getNumChannels() > 1;
+    auto emit = [&](int pos) {
+        double l = 0, r = 0;
+        pd_synth_render(&synth, &l, &r);
+        buffer.setSample(0, pos, (float)(l * 0.25));
+        if (stereo) buffer.setSample(1, pos, (float)(r * 0.25));
+    };
+
     int pos = 0;
     for (const auto meta : midi) {
         const int at = juce::jlimit(0, n, meta.samplePosition);
         /* render up to the event, then apply it, so timing inside a block is
          * the timing the host asked for */
-        for (; pos < at; pos++) {
-            double s = 0;
-            for (auto& v : voices) s += pd_voice_next(&v);
-            buffer.setSample(0, pos, (float)(s * 0.25));
-        }
+        for (; pos < at; pos++) emit(pos);
+
         const auto m = meta.getMessage();
         if (m.isNoteOn()) {
-            pd_voice_t* pick = nullptr;
-            for (auto& v : voices) if (!pd_voice_active(&v)) { pick = &v; break; }
-            if (!pick) pick = &voices[0];
-            /* a new voice starts where the wheels currently are, not at zero */
-            pd_voice_set_bend(pick, wheelBend);
-            pd_voice_set_mod(pick, wheelMod);
-            pd_voice_note_on(pick, m.getNoteNumber(), m.getVelocity() / 127.0);
+            pd_synth_note_on(&synth, m.getNoteNumber(), m.getVelocity() / 127.0);
         } else if (m.isNoteOff()) {
-            for (auto& v : voices)
-                if (pd_voice_active(&v) && v.note == m.getNoteNumber()) pd_voice_note_off(&v);
+            pd_synth_note_off(&synth, m.getNoteNumber());
         } else if (m.isPitchWheel()) {
             /* 0 to 16383 with 8192 at rest, which is the only place the
              * asymmetry of the MIDI wheel needs handling */
-            const double b = (m.getPitchWheelValue() - 8192) / 8192.0;
-            wheelBend = b;
-            for (auto& v : voices) pd_voice_set_bend(&v, b);
+            wheelBend = (m.getPitchWheelValue() - 8192) / 8192.0;
+            pd_synth_set_bend(&synth, wheelBend);
         } else if (m.isController() && m.getControllerNumber() == 1) {
-            const double mod = m.getControllerValue() / 127.0;
-            wheelMod = mod;
-            for (auto& v : voices) pd_voice_set_mod(&v, mod);
+            wheelMod = m.getControllerValue() / 127.0;
+            pd_synth_set_mod(&synth, wheelMod);
         } else if (m.isAllNotesOff() || m.isAllSoundOff()) {
-            for (auto& v : voices) pd_voice_note_off(&v);
+            pd_synth_all_off(&synth);
         }
     }
-    for (; pos < n; pos++) {
-        double s = 0;
-        for (auto& v : voices) s += pd_voice_next(&v);
-        buffer.setSample(0, pos, (float)(s * 0.25));
-    }
-
-    /* mono engine, both ears */
-    if (buffer.getNumChannels() > 1)
-        buffer.copyFrom(1, 0, buffer, 0, 0, n);
+    for (; pos < n; pos++) emit(pos);
 
     /* what the editor draws */
     int live = 0;
-    for (auto& v : voices) if (pd_voice_active(&v)) live++;
+    for (int i = 0; i < synth.voice_count; i++) if (pd_voice_active(&synth.voice[i])) live++;
     voicesNow.store(live);
-    bendNow[0].store((float)voices[0].line[0].wave.value);
-    bendNow[1].store((float)voices[0].line[1].wave.value);
+    bendNow[0].store((float)synth.voice[0].line[0].wave.value);
+    bendNow[1].store((float)synth.voice[0].line[1].wave.value);
 
     float pk = 0.0f;
     int sp = scopePos.load();
@@ -289,6 +279,7 @@ void Processor::loadPreset(int index)
     setRanged("vel_level", (float)q.velocity_to_level);
     setRanged("bend_range", (float)q.bend_range_semitones);
     setRanged("mod_wave", (float)q.mod_to_wave);
+    setRanged("spread", (float)q.spread);
 
     for (int i = 0; i < 2; i++) {
         const pd_line_params_t &L = q.line[i];

@@ -16,6 +16,8 @@ add_library(pdcore STATIC
   src/pd_osc.c
   src/pd_env.c
   src/pd_voice.c
+  src/pd_os.c
+  src/pd_synth.c
   src/pd_presets.c)
 target_include_directories(pdcore PUBLIC src)
 target_compile_options(pdcore PRIVATE -Wall -Wextra)
