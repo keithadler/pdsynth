@@ -121,7 +121,7 @@ int main(void)
         double h1 = harmonic(buf, 1);
         double odd = harmonic(buf, 3) / h1 + harmonic(buf, 5) / h1;
         double even = harmonic(buf, 2) / h1 + harmonic(buf, 4) / h1;
-        ok(odd > even, "square should favour odd harmonics (odd %.3f, even %.3f)", odd, even);
+        ok(odd > even, "square should favor odd harmonics (odd %.3f, even %.3f)", odd, even);
         printf("   odd %.2f vs even %.2f\n", odd, even);
     }
 

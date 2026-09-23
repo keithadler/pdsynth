@@ -208,7 +208,7 @@ int main(void)
         double bp_low = 0, bp_band = 0;
         for (int h = 1; h <= 2; h++) bp_low  += mag(bufL, len / 3, 8192, f0 * h);
         for (int h = 5; h <= 7; h++) bp_band += mag(bufL, len / 3, 8192, f0 * h);
-        ok(bp_band > bp_low, "band pass should favour its band (%.5f vs %.5f)", bp_band, bp_low);
+        ok(bp_band > bp_low, "band pass should favor its band (%.5f vs %.5f)", bp_band, bp_low);
 
         p.filter_mode = PD_FILTER_NOTCH; p.filter_cutoff_hz = f0 * 6.0;
         p.filter_resonance = 0.75;

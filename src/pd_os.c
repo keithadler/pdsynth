@@ -27,7 +27,7 @@ static double bessel_i0(double x)
  * A windowed sinc, not a biquad cascade.
  *
  * The first attempt used three biquads, a sixth order Butterworth at 21.6 kHz
- * running at 192 kHz. In normalised terms that is an extremely gentle slope:
+ * running at 192 kHz. In normalized terms that is an extremely gentle slope:
  * at 30 kHz it is barely down at all, so everything between the output's
  * Nyquist and the inner one survived the filter and folded when the extra
  * samples were thrown away. The measurement said so plainly, and no amount of
@@ -43,7 +43,7 @@ void pd_decimator_init(pd_decimator_t *d, double output_rate)
 {
     memset(d, 0, sizeof(*d));
     const double inner = output_rate * PD_OVERSAMPLE;
-    const double fc = 20000.0 / inner;          /* normalised corner */
+    const double fc = 20000.0 / inner;          /* normalized corner */
     const double beta = 8.6;                    /* about 85 dB of stopband */
     const int M = PD_DECIM_TAPS - 1;
     const double denom = bessel_i0(beta);

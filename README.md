@@ -34,7 +34,7 @@ The standalone publishes a MIDI port called **pdsynth**, so a DAW, a keyboard
 or a script can reach it without opening a settings dialog. The computer keys
 play two octaves, `z` to `m` and `q` to `i`, with the arrows shifting octave and
 space for panic. Bend and mod wheels sit at the left of the keyboard; bend
-springs back to centre when released, as a real one does.
+springs back to center when released, as a real one does.
 
 ## What is in it
 
@@ -91,13 +91,31 @@ would follow the code home.
 **Twenty presets**, original designs built from published technique. No
 parameter list is copied from anyone and Casio's ROM data is not here.
 
+**A librarian.** It reads and writes Casio CZ voice dumps, the CZ-101/1000/5000
+shape that every CZ can read, so patches made on the hardware open here and
+patches made here can be sent back. Two buttons beside the bank.
+
+The rule it follows is that a translation never fails silently. pdsynth has
+four lines where a CZ has two, a filter the hardware never had, and it hears
+velocity and pressure that a CZ-101 cannot. So every load and every save comes
+back with a written account of what could not make the trip, naming the control
+each time and saying what will happen on the machine. It does not refuse and it
+does not quietly round.
+
+It also keeps what it does not understand. A voice loaded and saved again is
+byte for byte the file that arrived, including the vibrato section, the key
+follow, the CZ's pairing of two waveforms on a line, and the per step falling
+bit, which real dumps show is stored rather than worked out from the levels. A
+librarian that rewrites bytes it does not model corrupts a collection quietly,
+one save at a time.
+
 ## Testing
 
 ```
 ctest --test-dir build
 ```
 
-Five suites. The oscillator is judged by its spectrum, because that is the only
+Ten suites. The oscillator is judged by its spectrum, because that is the only
 thing about an oscillator a listener can hear. The envelope is judged by where
 it is at a given moment, because one that reaches the right levels at the wrong
 time is a different instrument. The voice is judged on pitch, detuning,
@@ -113,14 +131,29 @@ work rather than from taste: a struck bar rings and then stops and dulls as it
 goes, brass brightens after the note starts rather than before, an organ is a
 switch and not a shape. It found eleven real faults the first time it ran.
 
+The librarian is checked twice over, because there are two ways for it to be
+wrong. `pd_sysexcheck` takes real CZ dumps through the C translator and reports
+how much of each one survived, by section. `pd_syxplugcheck` takes the same
+dumps out to the plugin's parameters and back, which is the trip a player's
+patch actually makes and which the C tests cannot see: parameters are floats
+with ranges, and a rate of 73 coming back as 72 would quietly alter every patch
+anybody saved. That second check is why the detune, the end step and the sign
+of a zero detune were fixed. Both run on every push.
+
+The suites are also checked by breaking the code on purpose and seeing whether
+they notice. That is how the sysex tests grew: six deliberate faults went
+straight through the first run, all of them changes applied to both the encoder
+and the decoder, which a round trip cannot see by construction.
+
 ## Still to come
 
-CV and gate, so it can sit in a modular rig, which needs a DC coupled interface
-to be worth anything. A sysex import that knows what a given piece of hardware
-supports and turns off what it does not, and an export that declines to send
-parameters the target cannot receive; that one waits on having the byte layout
-verified rather than guessed, because a librarian that writes plausible
-nonsense to a real machine is worse than none.
+CV and gate are in and checked on every push, but the last mile needs a DC
+coupled interface before the voltages mean anything outside a test.
+
+And the honest one: none of the librarian has ever touched a real CZ. It is
+verified against twenty real patch files, which is not the same as a machine.
+If you own a CZ, or the recent hardware reissue, a dump out of it and a write
+back into it would be worth more than everything above.
 
 ## Thanks
 

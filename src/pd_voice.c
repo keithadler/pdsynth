@@ -228,7 +228,7 @@ void pd_voice_next_inner(pd_voice_t *v, double *left, double *right)
     double a, b;
     voice_inner_lines(v, &a, &b);
 
-    /* Equal gain either side of centre. A CZ is a mono box, but two lines
+    /* Equal gain either side of center. A CZ is a mono box, but two lines
      * detuned against each other are begging to be placed apart, and a synth
      * that arrives in one spot in the middle sounds smaller than it is. */
     const double s = v->patch->spread;

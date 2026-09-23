@@ -97,9 +97,9 @@ int main(void)
         play(&p, 57, 1.0, 0.17, 0);
         double f0 = pd_note_to_hz(57);
         /* the beat between them puts energy either side of the nominal pitch */
-        double below = mag_at(f0 * 0.996), above = mag_at(f0 * 1.004), centre = mag_at(f0);
-        ok(below > centre * 0.5 && above > centre * 0.5,
-           "detuned lines should spread the fundamental (%.4f %.4f %.4f)", below, centre, above);
+        double below = mag_at(f0 * 0.996), above = mag_at(f0 * 1.004), center = mag_at(f0);
+        ok(below > center * 0.5 && above > center * 0.5,
+           "detuned lines should spread the fundamental (%.4f %.4f %.4f)", below, center, above);
         printf("   the fundamental spreads either side\n");
     }
 
