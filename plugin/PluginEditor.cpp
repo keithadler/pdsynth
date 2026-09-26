@@ -390,12 +390,22 @@ void Editor::paint(juce::Graphics& g)
     g.drawText("z-m and q-i play    left/right octave    space panic",
                getLocalBounds().withTrimmedRight(24).withTrimmedBottom(8),
                juce::Justification::bottomRight, false);
-    /* The claim has to stop being made the moment it stops being true. */
+    /*
+     * The claim has to stop being made the moment it stops being true, and it
+     * has to be read the way it was meant. This line used to say "no filter in
+     * the path", which was about the signal path right now and was read, quite
+     * reasonably, as "this synth does not have a filter". Somebody went looking
+     * for the control and could not find it. So it now says what it means and
+     * says where the control is.
+     */
     int fm = 0;
     if (auto* f = proc.apvts.getRawParameterValue("filt_mode")) fm = (int)f->load();
-    g.drawText(fm == 0 ? "no filter in the path"
-                       : juce::String(pd_filter_mode_name((pd_filter_mode_t)fm)) + " engaged",
-               juce::Rectangle<int>(22, 58, 300, 16),
+    g.drawText(fm == 0
+                   ? juce::String("no filter engaged, as on a CZ. "
+                                  "FILTER, in the left column, adds one.")
+                   : juce::String(pd_filter_mode_name((pd_filter_mode_t)fm))
+                         + " engaged, which a CZ never had",
+               juce::Rectangle<int>(22, 58, getWidth() - 240, 16),
                juce::Justification::centredLeft, false);
 }
 
