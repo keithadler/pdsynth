@@ -205,6 +205,30 @@ PRESETS = [
    2, mix='noise', noise=.10, velw=.35, velv=.5, gain=0.62, fx=Fx(chorus=0.50, cho_depth=5.5, cho_rate=0.19, delay=0.16, dly_time=0.40, dly_fb=0.24)),
  # The organ: no envelope worth the name in either direction, which is the
  # point. Everything else on this list is shaped; this one is a switch.
+ # The waterphone: a bowl of rods with water in it, bowed. Its partials are
+ # not harmonics of anything, which is the whole sound and the one thing a
+ # bent sine cannot do, because phase distortion produces a harmonic series by
+ # construction. Ring modulation is the way out: the product of two tones a
+ # tritone and a few cents apart sits at every sum and difference of their
+ # partials, and almost none of those land on a multiple of the note. The
+ # pitch envelope wanders because the water moves while it is bowed, and that
+ # wander doubles the effect again, because a ratio that keeps moving never
+ # settles onto a harmonic one. Measured: the interval alone gets it to 2.5
+ # times as much power between the harmonics as on them, the wander takes it
+ # to 5.0, and the same patch with the second line an octave away instead
+ # reads 0.06. The long delay is the room, since nobody plays one of these
+ # dry.
+ Preset("Waterphone", "Water", [
+   L('rtri', .95, 0, pdepth=1.6,
+     penv=env([26,24,28,22,26,24,28,26],[56,38,64,42,60,40,58,48],7,7),
+     wenv=env([30,26,34,28],[58,82,64,0],2,3),
+     aenv=env([30,44,20,26],[88,99,72,0],2,3)),
+   L('dsine', .95, +23, semis=6,
+     wenv=env([44,40,36],[42,56,0],1,2),
+     aenv=env([60,99,99],[99,99,0],1,2))],
+   2, mix='ring', velw=.45, velv=.70, gain=1.000,
+   fx=Fx(chorus=0.45, cho_depth=5.0, cho_rate=0.17,
+         delay=0.38, dly_time=0.55, dly_fb=0.45, dly_tone=0.35)),
  Preset("Drawbar", "Organ", [
    L('square', .62, -3, wenv=env([99,99,80],[62,62,0],1,2), aenv=env([99,99,74],[99,99,0],1,2)),
    L('dsine', .46, +3, octave=1, wenv=env([99,99,80],[48,48,0],1,2), aenv=env([99,99,74],[99,99,0],1,2))],

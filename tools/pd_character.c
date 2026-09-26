@@ -90,6 +90,45 @@ static double bright(double f0, double from, double win)
     }
     return den > 0 ? num / den : 1.0;
 }
+/*
+ * How much of the sound is not a harmonic of the note.
+ *
+ * Phase distortion makes a harmonic series by construction: bend the phase of
+ * a sine however you like and every partial still lands on a multiple of the
+ * note. Metal does not behave that way, and a waterphone least of all. So for
+ * anything claiming to be struck or bowed metal, the question is whether
+ * there is anything at all sitting between the harmonics. This compares what
+ * is halfway between neighbouring harmonics with what is on them; a harmonic
+ * sound has almost nothing there, and a bell has plenty.
+ */
+static double between_harmonics(const pd_patch_t *p, double f0,
+                                double from, double win)
+{
+    /* Measured against the note the preset actually sounds, not against the
+     * note that was pressed. A patch transposed down an octave has its odd
+     * harmonics sitting exactly halfway between the multiples of the pressed
+     * note, so probing there reads a perfectly harmonic bass as though it
+     * were a bell. The first version of this did precisely that and made a
+     * fretless bass look more inharmonic than a tubular bell. */
+    const double semis = p->line[0].octave * 12.0 + p->line[0].semitones;
+    const double f = f0 * pow(2.0, semis / 12.0);
+
+    /* Nothing divided by nothing is not an answer. A preset that has already
+     * died by this point in the note read 0.3448 here, the same number for
+     * two different presets, which is what dividing one floating point zero
+     * by another gets you. That number is above the threshold this is
+     * compared against, so silence used to pass the test. */
+    if (rms_at(from, win) < 1e-5)
+        return 0.0;
+
+    double on = 0, between = 0;
+    for (int k = 1; k <= 40; k++) {
+        on += mag_at(k * f, from, win);
+        between += mag_at((k + 0.5) * f, from, win);
+    }
+    return on > 0 ? between / on : 0.0;
+}
+
 static double attack_ms(void)
 {
     double pk = 0;
@@ -154,6 +193,36 @@ int main(void)
         } else if (!strcmp(f, "Bell")) {
             want(at1 > 0.20, n, "a bell rings on", at1, 0.20, 9.9);
             want(b_on > 3.0, n, "and is rich at the strike", b_on, 3.0, 99.0);
+        } else if (!strcmp(f, "Water")) {
+            /* The defining trait, and the hard one: a waterphone's partials
+             * are not harmonics. Anything a bent sine does on its own would
+             * fail this, which is the point of measuring it. */
+            /* Asked before the question about its partials, because the
+             * answer to that one is meaningless if there is no sound. */
+            want(rms_at(0.40, 0.20) > 0.01, n,
+                 "it has to still be sounding to be measured", rms_at(0.40, 0.20),
+                 0.01, 9.9);
+            const double ih = between_harmonics(&pr->patch, f0, 0.40, 0.20);
+            /* Measured: as built it reads 5.0. Put the second line an octave
+             * away instead of a tritone and it falls to 0.4, which is what a
+             * threshold of 0.25 used to let through. One of 1.0 still leaves
+             * five times the margin and catches that. */
+            want(ih > 1.0, n, "its partials should not be harmonics", ih, 1.0, 99.0);
+            want(a_ms > 25, n, "bowed, so it does not start instantly (ms)", a_ms, 25.0, 9999.0);
+            want(at1 > 0.35, n, "and it rings on while bowed", at1, 0.35, 9.9);
+            /*
+             * The pitch wander is not measured here, and it is worth saying
+             * why rather than leaving a gap that looks like an oversight. A
+             * first attempt scanned for the loudest thing near the note at
+             * two moments and compared them. It reported 188 cents of
+             * movement from an envelope that can only produce 42, because
+             * ring modulation fills the space around the note with partials
+             * and the loudest one keeps changing. Removing the wander
+             * entirely did not fail it. A measurement that passes for a
+             * reason other than the one it names is worse than no
+             * measurement, so it is gone until there is a way to follow one
+             * partial through the middle of all that.
+             */
         } else if (!strcmp(f, "Organ")) {
             want(a_ms >= 0 && a_ms < 25, n, "an organ is a switch, not a shape (ms)", a_ms, 0.0, 25.0);
             want(at1 > 0.85 && at1 < 1.2, n, "and does not change while held", at1, 0.85, 1.2);
@@ -165,6 +234,21 @@ int main(void)
         } else if (!strcmp(f, "Bass")) {
             want(b_on > b_mid * 1.2, n, "a bass should open and close, not sit still", b_on / (b_mid > 0 ? b_mid : 1), 1.2, 99.0);
             want(at1 > 0.4, n, "and hold under the hand", at1, 0.4, 9.9);
+        }
+    }
+
+    /* The control. If a plain harmonic preset also reads as inharmonic then
+     * the measurement above is not measuring anything. */
+    {
+        const pd_preset_t *organ = 0;
+        for (int i = 0; i < pd_preset_count(); i++)
+            if (!strcmp(pd_preset(i)->family, "Organ")) organ = pd_preset(i);
+        if (organ) {
+            play(&organ->patch, 60, 0.95, 1.2);
+            const double ih = between_harmonics(&organ->patch, f0, 0.40, 0.20);
+            want(ih < 0.10, organ->name,
+                 "a harmonic preset must read as harmonic, or the test is empty",
+                 ih, 0.0, 0.10);
         }
     }
 
