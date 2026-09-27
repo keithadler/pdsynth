@@ -57,21 +57,41 @@ int main(int argc, char **argv)
     for (int a = first; a < argc; a++) {
         FILE *f = fopen(argv[a], "rb");
         if (!f) { printf("cannot open %s\n", argv[a]); unreadable++; continue; }
-        uint8_t raw[512];
-        const size_t n = fread(raw, 1, sizeof raw, f);
+        /* A bank of sixteen voices is over four thousand bytes, so the whole
+         * file is read rather than the first dump's worth. The fixed 512 byte
+         * buffer this used to have quietly truncated every bank to its first
+         * two voices and then reported the result as malformed. */
+        fseek(f, 0, SEEK_END);
+        const long file_len = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        if (file_len <= 0) { fclose(f); printf("%-28s empty\n", argv[a]); unreadable++; continue; }
+        uint8_t *raw = (uint8_t *)malloc((size_t)file_len);
+        if (!raw) { fclose(f); unreadable++; continue; }
+        const size_t n = fread(raw, 1, (size_t)file_len, f);
         fclose(f);
 
+        /* A file may hold a whole bank, so every voice in it is checked
+         * rather than only the first. */
+        const int voices = pd_sysex_bank_count(raw, n);
+        if (voices > 1)
+            printf("%-28s a bank of %d voices\n", argv[a], voices);
+        for (int vi = 0; vi < (voices > 0 ? voices : 1); vi++) {
+        const uint8_t *msg = raw;
+        size_t msg_len = n;
+        if (voices > 1 && pd_sysex_bank_at(raw, n, vi, &msg, &msg_len) != 0)
+            break;
+
         uint8_t before[PD_SYSEX_VOICE];
-        if (pd_sysex_unpack(raw, n, before) != 0) {
-            printf("%-28s not a CZ voice dump (%zu bytes)\n", argv[a], n);
+        if (pd_sysex_unpack(msg, msg_len, before) != 0) {
+            printf("%-28s not a CZ voice dump (%zu bytes)\n", argv[a], msg_len);
             unreadable++;
-            continue;
+            continue;   /* freed with the rest of the file below */
         }
 
         pd_patch_t p;
         pd_sysex_report_t rr, wr;
         uint8_t basev[PD_SYSEX_VOICE];
-        if (pd_sysex_read_ex(raw, n, &p, basev, &rr) != 0) { unreadable++; continue; }
+        if (pd_sysex_read_ex(msg, msg_len, &p, basev, &rr) != 0) { unreadable++; continue; }
 
         uint8_t outb[PD_SYSEX_BYTES];
         const size_t wn = pd_sysex_write_ex(&p, basev, 0, 0x60, outb, sizeof outb, &wr);
@@ -94,9 +114,11 @@ int main(int argc, char **argv)
                 sec_bytes[s]++;
                 if (before[kSec[s].off + i] == after[kSec[s].off + i]) sec_same[s]++;
             }
+        }   /* each voice in the file */
+        free(raw);
     }
 
-    printf("\n%d files read, %d unreadable\n\n", files, unreadable);
+    printf("\n%d voices read, %d unreadable\n\n", files, unreadable);
     printf("%-20s %8s %8s %7s\n", "section", "bytes", "same", "");
     long mb = 0, ms = 0;
     for (int s = 0; s < NSEC; s++) {

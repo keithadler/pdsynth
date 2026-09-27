@@ -79,8 +79,29 @@ int main(int argc, char** argv)
         outF.loadFileAsData(after);
 
         files++;
+        /*
+         * When the file is a bank the plugin loads its first voice, because it
+         * holds one patch, so that is what has to be compared against. This
+         * used to compare a bank of twenty with the single voice that came
+         * back and call the difference a failure, which said nothing about
+         * the plugin and everything about the comparison.
+         */
+        const uint8_t* want = (const uint8_t*)before.getData();
+        size_t want_len = before.getSize();
+        const int in_voices = pd_sysex_bank_count(want, want_len);
+        if (in_voices > 1) {
+            const uint8_t* one = nullptr;
+            size_t one_len = 0;
+            if (pd_sysex_bank_at(want, want_len, 0, &one, &one_len) == 0) {
+                want = one;
+                want_len = one_len;
+            }
+            say("  " + f.getFileName() + " is a bank of "
+                + juce::String(in_voices) + "; comparing its first voice");
+        }
+
         uint8_t a[PD_SYSEX_VOICE], b[PD_SYSEX_VOICE];
-        if (pd_sysex_unpack((const uint8_t*)before.getData(), before.getSize(), a) != 0
+        if (pd_sysex_unpack(want, want_len, a) != 0
          || pd_sysex_unpack((const uint8_t*)after.getData(), after.getSize(), b) != 0) {
             failed++;
             continue;

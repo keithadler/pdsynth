@@ -421,6 +421,220 @@ int main(void)
         ok(v2[71] == 0x2A, "line 2 pairing survives, wanted 2A got %02X", v2[71]);
     }
 
+    printf("-- a bank is several voices in one file --\n");
+    {
+        /* Built by hand rather than with the bank writer, so that reading is
+         * not being checked against writing alone. */
+        uint8_t file[PD_SYSEX_BYTES * 4];
+        size_t at = 0;
+        for (int i = 0; i < 4; i++) {
+            fill_voice(voice, 100 + i);
+            at += pd_sysex_pack(voice, 0, 0x20 + i, file + at, sizeof file - at);
+        }
+        ok(pd_sysex_bank_count(file, at) == 4, "four voices counted, got %d",
+           pd_sysex_bank_count(file, at));
+
+        for (int i = 0; i < 4; i++) {
+            const uint8_t *msg = 0;
+            size_t msg_len = 0;
+            ok(pd_sysex_bank_at(file, at, i, &msg, &msg_len) == 0,
+               "voice %d is there", i);
+            ok(msg_len == PD_SYSEX_BYTES, "and is a whole dump (%zu)", msg_len);
+
+            uint8_t got[PD_SYSEX_VOICE], want_[PD_SYSEX_VOICE];
+            fill_voice(want_, 100 + i);
+            pd_sysex_unpack(msg, msg_len, got);
+            ok(memcmp(got, want_, PD_SYSEX_VOICE) == 0,
+               "voice %d is the one that was put there", i);
+            ok(msg[6] == 0x20 + i, "and kept its program number");
+        }
+        const uint8_t *msg; size_t ml;
+        ok(pd_sysex_bank_at(file, at, 4, &msg, &ml) < 0, "and there is no fifth");
+    }
+
+    printf("-- a bank found by its markers, not by counting bytes --\n");
+    {
+        /* The two lengths a dump can have, some rubbish between them, and a
+         * message at the end that was cut off. Anything that assumes 264 bytes
+         * each gets all of this wrong. */
+        uint8_t file[PD_SYSEX_BYTES * 5];
+        size_t at = 0;
+
+        fill_voice(voice, 7);
+        at += pd_sysex_pack(voice, 0, 0x60, file + at, sizeof file - at);
+
+        /* the same voice again without its program byte, which is legal */
+        uint8_t shortone[PD_SYSEX_BYTES];
+        fill_voice(voice, 8);
+        pd_sysex_pack(voice, 0, 0x60, shortone, sizeof shortone);
+        memmove(shortone + 6, shortone + 7, PD_SYSEX_BYTES - 7);
+        memcpy(file + at, shortone, PD_SYSEX_BYTES_ALT);
+        at += PD_SYSEX_BYTES_ALT;
+
+        /* rubbish between messages, which some editors leave behind */
+        file[at++] = 0x00; file[at++] = 0x0A; file[at++] = 0x0D;
+
+        fill_voice(voice, 9);
+        at += pd_sysex_pack(voice, 0, 0x2F, file + at, sizeof file - at);
+
+        /* and a fourth that was cut off before its F7 */
+        fill_voice(voice, 10);
+        size_t cut = pd_sysex_pack(voice, 0, 0x21, file + at, sizeof file - at);
+        at += cut - 40;
+
+        ok(pd_sysex_bank_count(file, at) == 3,
+           "three whole voices, the cut one ignored, got %d",
+           pd_sysex_bank_count(file, at));
+
+        const uint8_t *msg; size_t ml;
+        pd_sysex_bank_at(file, at, 1, &msg, &ml);
+        ok(ml == PD_SYSEX_BYTES_ALT,
+           "the middle one is the short form (%zu)", ml);
+        uint8_t got[PD_SYSEX_VOICE], want_[PD_SYSEX_VOICE];
+        fill_voice(want_, 8);
+        pd_sysex_unpack(msg, ml, got);
+        ok(memcmp(got, want_, PD_SYSEX_VOICE) == 0,
+           "and still reads back as the voice it was");
+    }
+
+    printf("-- a bank written and read comes back voice for voice --\n");
+    {
+        pd_patch_t patches[5];
+        uint8_t bases[5][PD_SYSEX_VOICE];
+        const uint8_t *base_ptrs[5];
+        pd_sysex_report_t r;
+        for (int i = 0; i < 5; i++) {
+            fill_voice(voice, 40 + i);
+            pd_sysex_pack(voice, 0, 0x60, dump, sizeof dump);
+            pd_sysex_read_ex(dump, PD_SYSEX_BYTES, &patches[i], bases[i], &r);
+            base_ptrs[i] = bases[i];
+        }
+
+        uint8_t file[PD_SYSEX_BYTES * 5];
+        pd_sysex_report_t rep;
+        const size_t n = pd_sysex_write_bank(patches, base_ptrs, 5, 0, 0x20,
+                                             file, sizeof file, &rep);
+        ok(n == 5 * PD_SYSEX_BYTES, "five dumps written (%zu bytes)", n);
+        ok(pd_sysex_bank_count(file, n) == 5, "and five read back");
+
+        for (int i = 0; i < 5; i++) {
+            const uint8_t *msg; size_t ml;
+            pd_sysex_bank_at(file, n, i, &msg, &ml);
+            uint8_t got[PD_SYSEX_VOICE], want_[PD_SYSEX_VOICE];
+            fill_voice(want_, 40 + i);
+            pd_sysex_unpack(msg, ml, got);
+            ok(memcmp(got, want_, PD_SYSEX_VOICE) == 0,
+               "voice %d unchanged through the bank", i);
+            ok(msg[6] == 0x20 + i, "numbered %d, got %d", 0x20 + i, msg[6]);
+        }
+    }
+
+    printf("-- a bank says what was lost once, not once per voice --\n");
+    {
+        pd_patch_t patches[8];
+        pd_sysex_report_t rep;
+        for (int i = 0; i < 8; i++) {
+            memset(&patches[i], 0, sizeof patches[i]);
+            patches[i].line_count = 1;
+            patches[i].line[0].level = 1.0;
+            patches[i].filter_mode = PD_FILTER_LOWPASS;   /* the same loss, eight times */
+            patches[i].glide_seconds = 0.2;
+        }
+        uint8_t file[PD_SYSEX_BYTES * 8];
+        const size_t n = pd_sysex_write_bank(patches, NULL, 8, 0, 0x20,
+                                             file, sizeof file, &rep);
+        ok(n == 8 * PD_SYSEX_BYTES, "eight written");
+        int filters = 0;
+        for (int i = 0; i < rep.count; i++)
+            if (!strcmp(rep.note[i].control, "Filter")) filters++;
+        ok(filters == 1, "the filter is mentioned once, not eight times (%d)",
+           filters);
+        ok(rep.count >= 2, "and the other losses are still there (%d notes)",
+           rep.count);
+    }
+
+    printf("-- a bank ignores messages that are not CZ voices --\n");
+    {
+        /* Patch files in the wild are not tidy. A folder of dumps concatenated
+         * by hand can carry another maker's messages, and counting every
+         * F0 to F7 as a voice would hand them to the reader as though they
+         * were. */
+        uint8_t file[PD_SYSEX_BYTES * 3];
+        size_t at = 0;
+
+        /* a Yamaha message: right shape, wrong instrument */
+        const uint8_t yam[] = { 0xF0, 0x43, 0x00, 0x09, 0x20, 0x00, 0x11, 0xF7 };
+        memcpy(file + at, yam, sizeof yam); at += sizeof yam;
+
+        fill_voice(voice, 21);
+        at += pd_sysex_pack(voice, 0, 0x20, file + at, sizeof file - at);
+
+        /* a Casio message of the right make but the wrong length */
+        const uint8_t stub[] = { 0xF0, 0x44, 0x00, 0x00, 0x70, 0x30, 0xF7 };
+        memcpy(file + at, stub, sizeof stub); at += sizeof stub;
+
+        fill_voice(voice, 22);
+        at += pd_sysex_pack(voice, 0, 0x21, file + at, sizeof file - at);
+
+        ok(pd_sysex_bank_count(file, at) == 2,
+           "two voices among four messages, got %d",
+           pd_sysex_bank_count(file, at));
+
+        const uint8_t *msg; size_t ml;
+        pd_sysex_bank_at(file, at, 0, &msg, &ml);
+        uint8_t got[PD_SYSEX_VOICE], want_[PD_SYSEX_VOICE];
+        fill_voice(want_, 21);
+        pd_sysex_unpack(msg, ml, got);
+        ok(memcmp(got, want_, PD_SYSEX_VOICE) == 0,
+           "and the first voice is the first CZ one, not the Yamaha message");
+    }
+
+    printf("-- a message with no end does not swallow the next one --\n");
+    {
+        /* A file cut short in the middle, then appended to, leaves an F0 with
+         * no F7. Scanning for the next F7 from there would run through the
+         * whole of the following voice and take it with it. */
+        uint8_t file[PD_SYSEX_BYTES * 2];
+        size_t at = 0;
+        const uint8_t orphan[] = { 0xF0, 0x44, 0x00, 0x00, 0x70, 0x20, 0x60 };
+        memcpy(file + at, orphan, sizeof orphan); at += sizeof orphan;
+
+        fill_voice(voice, 33);
+        at += pd_sysex_pack(voice, 0, 0x22, file + at, sizeof file - at);
+
+        ok(pd_sysex_bank_count(file, at) == 1,
+           "the whole voice after the orphan is still found, got %d",
+           pd_sysex_bank_count(file, at));
+        const uint8_t *msg; size_t ml;
+        ok(pd_sysex_bank_at(file, at, 0, &msg, &ml) == 0 && ml == PD_SYSEX_BYTES,
+           "and it is a whole dump, not a fragment (%zu)", ml);
+        uint8_t got[PD_SYSEX_VOICE], want_[PD_SYSEX_VOICE];
+        fill_voice(want_, 33);
+        pd_sysex_unpack(msg, ml, got);
+        ok(memcmp(got, want_, PD_SYSEX_VOICE) == 0, "and it is the right one");
+    }
+
+    printf("-- a bank too big for the buffer writes nothing --\n");
+    {
+        pd_patch_t patches[3];
+        for (int i = 0; i < 3; i++) {
+            memset(&patches[i], 0, sizeof patches[i]);
+            patches[i].line_count = 1;
+            patches[i].line[0].level = 1.0;
+        }
+        uint8_t small[PD_SYSEX_BYTES * 2];
+        memset(small, 0xAB, sizeof small);
+        pd_sysex_report_t rep;
+        ok(pd_sysex_write_bank(patches, NULL, 3, 0, 0x20, small, sizeof small, &rep) == 0,
+           "three voices refuse a two voice buffer");
+        /* "writes nothing" has to mean nothing, not two voices and then a
+         * change of mind, because the caller was told nothing was written. */
+        int touched = 0;
+        for (size_t i = 0; i < sizeof small; i++)
+            if (small[i] != 0xAB) touched++;
+        ok(touched == 0, "and leaves the buffer alone (%d bytes changed)", touched);
+    }
+
     printf("-- a buffer too small writes nothing rather than part of a dump --\n");
     {
         pd_patch_t p; memset(&p, 0, sizeof p);

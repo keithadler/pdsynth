@@ -66,6 +66,111 @@ static void note(pd_sysex_report_t *r, const char *control, const char *fmt, ...
 }
 
 /* ---------------------------------------------------------------------------
+ * Banks: several voice dumps in one file.
+ * ------------------------------------------------------------------------ */
+
+/*
+ * Finds the next complete F0 ... F7 message at or after `from`.
+ *
+ * Walking to the closing F7 rather than counting a fixed number of bytes
+ * matters: a dump carrying its program byte is 264 bytes and one without is
+ * 263, and a file can hold both. Anything between messages, which some editors
+ * pad with, is skipped.
+ */
+static int next_message(const uint8_t *in, size_t len, size_t from,
+                        size_t *start, size_t *stop)
+{
+    size_t i = from;
+    while (i < len && in[i] != 0xF0) i++;
+    if (i >= len) return 0;
+    size_t j = i + 1;
+    while (j < len && in[j] != 0xF7) {
+        /* another F0 before the F7 means the first was never closed */
+        if (in[j] == 0xF0) { i = j; j = i + 1; continue; }
+        j++;
+    }
+    if (j >= len) return 0;          /* ran off the end with no F7 */
+    *start = i;
+    *stop = j + 1;                   /* one past the F7 */
+    return 1;
+}
+
+int pd_sysex_bank_count(const uint8_t *in, size_t len)
+{
+    if (!in) return 0;
+    int n = 0;
+    size_t at = 0, start, stop;
+    while (n < PD_SYSEX_MAX_BANK && next_message(in, len, at, &start, &stop)) {
+        uint8_t voice[PD_SYSEX_VOICE];
+        if (pd_sysex_unpack(in + start, stop - start, voice) == 0)
+            n++;
+        at = stop;
+    }
+    return n;
+}
+
+int pd_sysex_bank_at(const uint8_t *in, size_t len, int index,
+                     const uint8_t **message, size_t *message_len)
+{
+    if (!in || !message || !message_len || index < 0) return -1;
+    int n = 0;
+    size_t at = 0, start, stop;
+    while (next_message(in, len, at, &start, &stop)) {
+        uint8_t voice[PD_SYSEX_VOICE];
+        if (pd_sysex_unpack(in + start, stop - start, voice) == 0) {
+            if (n == index) {
+                *message = in + start;
+                *message_len = stop - start;
+                return 0;
+            }
+            n++;
+        }
+        at = stop;
+    }
+    return -1;
+}
+
+size_t pd_sysex_write_bank(const pd_patch_t *patches, const uint8_t *const *bases,
+                           int count, int channel, int first_program,
+                           uint8_t *out, size_t cap, pd_sysex_report_t *report)
+{
+    if (!patches || !out || count <= 0) return 0;
+    if (count > PD_SYSEX_MAX_BANK) count = PD_SYSEX_MAX_BANK;
+    if ((size_t)count * PD_SYSEX_BYTES > cap) return 0;
+
+    pd_sysex_report_init(report);
+
+    size_t written = 0;
+    for (int i = 0; i < count; i++) {
+        /*
+         * Each voice writes its own account of what it lost, and they are
+         * gathered into one. Sixteen voices saying the same sentence about the
+         * filter sixteen times is not a report, it is a wall, so a note that
+         * has already been made is not made again.
+         */
+        pd_sysex_report_t one;
+        const size_t n = pd_sysex_write_ex(&patches[i], bases ? bases[i] : NULL,
+                                           channel, first_program + i,
+                                           out + written, cap - written, &one);
+        if (n == 0) return 0;
+        written += n;
+
+        if (report) {
+            for (int k = 0; k < one.count; k++) {
+                int seen = 0;
+                for (int m = 0; m < report->count; m++)
+                    if (!strcmp(report->note[m].control, one.note[k].control) &&
+                        !strcmp(report->note[m].what, one.note[k].what))
+                        seen = 1;
+                if (!seen)
+                    note(report, one.note[k].control, "%s", one.note[k].what);
+            }
+        }
+    }
+    return written;
+}
+
+/* ---------------------------------------------------------------------------
  * Half bytes. Low half first: the byte 5F travels as 0F 05.
  * ------------------------------------------------------------------------ */
 int pd_sysex_unpack(const uint8_t *in, size_t len, uint8_t voice[PD_SYSEX_VOICE])

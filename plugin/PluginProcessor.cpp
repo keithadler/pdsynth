@@ -509,10 +509,27 @@ bool Processor::loadSysex(const juce::File& f, juce::String& report)
     juce::MemoryBlock mb;
     if (!f.loadFileAsData(mb)) { report = "That file could not be read."; return false; }
 
+    /*
+     * A bank is several voice dumps in one file, which is what a CZ sends when
+     * it is asked for all sixteen. The plugin holds one patch, so the first
+     * voice is loaded and the player is told how many were in there rather
+     * than being shown an error for a file that is perfectly good.
+     */
+    const uint8_t* data = (const uint8_t*)mb.getData();
+    size_t size = mb.getSize();
+    const int voices = pd_sysex_bank_count(data, size);
+    if (voices > 1) {
+        const uint8_t* first = nullptr;
+        size_t first_len = 0;
+        if (pd_sysex_bank_at(data, size, 0, &first, &first_len) == 0) {
+            data = first;
+            size = first_len;
+        }
+    }
+
     pd_patch_t q {};
     pd_sysex_report_t rep;
-    const int rc = pd_sysex_read_ex((const uint8_t*)mb.getData(), mb.getSize(),
-                                    &q, sysexBase, &rep);
+    const int rc = pd_sysex_read_ex(data, size, &q, sysexBase, &rep);
     if (rc != 0) {
         report = rc == -2 ? "That is system exclusive, but not Casio's."
                : rc == -3 ? "That is not a system exclusive message."
@@ -523,7 +540,12 @@ bool Processor::loadSysex(const juce::File& f, juce::String& report)
     }
     haveSysexBase = true;
     applyPatch(q);
-    report = formatReport(rep, "Loaded " + f.getFileName() + ".");
+    const juce::String lead =
+        voices > 1
+            ? "Loaded the first of " + juce::String(voices) + " voices in "
+                  + f.getFileName() + ". The others are still in the file."
+            : "Loaded " + f.getFileName() + ".";
+    report = formatReport(rep, lead);
     return true;
 }
 

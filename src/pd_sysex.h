@@ -87,6 +87,51 @@ size_t pd_sysex_write_ex(const pd_patch_t *p, const uint8_t *base,
                          int channel, int program,
                          uint8_t *out, size_t cap, pd_sysex_report_t *report);
 
+/* ---------------------------------------------------------------------------
+ * Banks.
+ *
+ * A CZ bank file is not a format of its own. It is several ordinary voice
+ * dumps written one after another in the same file, which is what a machine
+ * sends when it is asked for all sixteen and what every editor writes out. So
+ * reading a bank is finding where each message starts and handing it to the
+ * same code that reads one, and writing a bank is the reverse.
+ *
+ * The messages are found by walking from one F0 to the F7 that closes it,
+ * rather than by assuming they are 264 bytes each, because a dump without its
+ * program byte is 263 and a file can hold a mixture.
+ * ------------------------------------------------------------------------ */
+
+/* The most voices this will read out of one file. A CZ-101 holds sixteen
+ * internal and sixteen on a cartridge; the larger machines hold more. */
+#define PD_SYSEX_MAX_BANK   64
+
+/* How many CZ voice dumps are in this buffer. Zero is a perfectly good answer
+ * for a file that is not one. */
+int pd_sysex_bank_count(const uint8_t *in, size_t len);
+
+/*
+ * Points at the index-th dump inside the buffer, without copying it. Returns 0
+ * and sets both outputs, or negative if there is no such voice.
+ */
+int pd_sysex_bank_at(const uint8_t *in, size_t len, int index,
+                     const uint8_t **message, size_t *message_len);
+
+/*
+ * Writes several patches as one bank file, numbering them from first_program
+ * upwards, which is what a CZ expects when a whole bank is sent to it.
+ *
+ * bases may be NULL, or an array of count pointers, each either NULL or the
+ * voice that patch was loaded from, so that the parts pdsynth does not model
+ * survive as they do for a single voice.
+ *
+ * Returns the number of bytes written, or 0 if the buffer is too small. The
+ * report gathers what was lost across all of them, said once each rather than
+ * once per voice.
+ */
+size_t pd_sysex_write_bank(const pd_patch_t *patches, const uint8_t *const *bases,
+                           int count, int channel, int first_program,
+                           uint8_t *out, size_t cap, pd_sysex_report_t *report);
+
 /* The two halves on their own, for tests and for anyone holding raw voices. */
 int    pd_sysex_unpack(const uint8_t *in, size_t len, uint8_t voice[PD_SYSEX_VOICE]);
 size_t pd_sysex_pack(const uint8_t voice[PD_SYSEX_VOICE], int channel, int program,
