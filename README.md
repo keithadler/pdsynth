@@ -157,9 +157,38 @@ back into it would be worth more than everything above.
 
 ## Thanks
 
-To [@Reaper10](https://github.com/Reaper10), whose description of what a
-software CZ ought to be is why this exists, and whose list is most of what is
-left to build.
+To [@Reaper10](https://github.com/Reaper10). Describing what a software CZ
+ought to be is why this exists at all, and it did not stop there. Naming what
+he actually caused is more use than thanking him in general:
+
+| | |
+|---|---|
+| a post about the CZ | the reason this was started |
+| a video about the CZ-1 Mini | pointed at the voice dump layout, which is the whole librarian |
+| "I can't see the title bar" | the window opening bigger than the screen, fixed |
+| "where is the filter?", with a screenshot | a status line that read as "this synth has no filter", reworded |
+| "could it do a waterphone?" | the Waterphone preset, and the measurement that decides whether it is one |
+| asking where the bend range was | bend range and mod depth given controls, having been invisible since the first release |
+
+Most of those are not feature requests. They are somebody using the thing and
+saying what was wrong with it, which is the part that cannot be done alone.
+
+## What helps
+
+Bug reports, especially with a screenshot. Something that looks wrong to you is
+worth more here than a feature nobody asked for, and more than a list of links.
+
+Dumps off real hardware. Nothing in the librarian has ever touched a CZ. A
+voice dumped from one, and whether writing it back sounds right, would settle
+in an afternoon what twenty patch files cannot.
+
+Documented formats: what the bytes mean, from a manual or an open source tool
+that already reads them.
+
+**Not ROM images or firmware.** Those are the manufacturer's copyrighted code
+and cannot be accepted here, in an issue or anywhere else. It is the same rule
+that means this contains no Casio data: the project is only worth having if it
+is legal to have.
 
 ## License
 
