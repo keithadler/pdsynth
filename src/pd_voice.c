@@ -26,6 +26,7 @@ void pd_patch_init(pd_patch_t *p)
         pd_env_params_flat(&l->amp_env);
         pd_env_params_flat(&l->pitch_env);
         l->pitch_env_depth_semitones = 0.0;
+        pd_grain_params_init(&l->grain);
     }
     p->velocity_to_level = 1.0;
     p->velocity_to_wave = 0.0;
@@ -59,6 +60,9 @@ void pd_voice_init(pd_voice_t *v, const pd_patch_t *patch, double sample_rate)
     pd_filter_reset(&v->filt_r);
     for (int i = 0; i < PD_MAX_LINES; i++) {
         pd_osc_init(&v->line[i].osc);
+        /* Each line gets its own stream, or four lines would scatter their
+         * grains at identical moments and the cloud would have a comb in it. */
+        pd_cloud_init(&v->line[i].cloud, 0x51ed270bu + 0x9e3779b9u * (uint32_t)(i + 1));
         /* the envelopes run at the inner rate too, or a patch would play four
          * times faster than it was written */
         pd_env_init(&v->line[i].pitch, &patch->line[i].pitch_env, v->inner_rate);
@@ -157,7 +161,16 @@ static double run_line(pd_voice_t *v, int i, double bend_offset)
     amp *= (1.0 - v->patch->velocity_to_level + v->patch->velocity_to_level * v->velocity);
     amp *= 1.0 + v->pressure * v->patch->aftertouch_to_level;
 
-    return pd_osc_next(&l->osc, lp->wave, bend) * amp;
+    /*
+     * A grain cloud reads the same waveform at the same bend. The line's own
+     * oscillator is still advanced either way, so switching granular on and
+     * off mid note does not jump the phase, and so the cloud and the plain
+     * tone stay in step if anything ever wants to crossfade them.
+     */
+    const double plain = pd_osc_next(&l->osc, lp->wave, bend);
+    if (!lp->grain.on) return plain * amp;
+    return pd_cloud_next(&l->cloud, &lp->grain, lp->wave, bend,
+                         l->osc.increment, v->inner_rate) * amp;
 }
 
 /* One sample at the inner rate, with the two lines kept apart so the caller

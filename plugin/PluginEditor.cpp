@@ -93,6 +93,11 @@ Editor::Editor(Processor& p)
     knob(cutoff,     cutoffL,     "CUTOFF",    Theme::accent);
     knob(resonance,  resonanceL,  "RESONANCE", Theme::accent);
     knob(filtEnv,    filtEnvL,    "DCW>CUTOFF",Theme::accent);
+    knob(grainEdge,    grainEdgeL,    "EDGE",    Theme::lineTwo);
+    knob(grainLen,     grainLenL,     "LENGTH",  Theme::lineTwo);
+    knob(grainOverlap, grainOverlapL, "OVERLAP", Theme::lineTwo);
+    knob(grainOnset,   grainOnsetL,   "SCATTER", Theme::lineTwo);
+    knob(grainPitch,   grainPitchL,   "DETUNE",  Theme::lineTwo);
     knob(choMix,     choMixL,     "CHORUS",    Theme::lineTwo, false);
     knob(choDepth,   choDepthL,   "DEPTH",     Theme::lineTwo, false);
     knob(choRate,    choRateL,    "RATE",      Theme::lineTwo, false);
@@ -115,6 +120,26 @@ Editor::Editor(Processor& p)
     filterL.setFont(Theme::label(10.5f));
     filterL.setJustificationType(juce::Justification::centredLeft);
     leftHolder.addAndMakeVisible(filterL);
+
+    /*
+     * The switch is a toggle rather than another mix button: granular is not
+     * one of a set of alternatives, it is something a line either does or does
+     * not do, and the knobs below it are dimmed when it does not so the panel
+     * says which controls are live.
+     */
+    grainBtn.setButtonText("GRANULAR");
+    grainBtn.setClickingTogglesState(true);
+    leftHolder.addAndMakeVisible(grainBtn);
+    grainBtn.onClick = [this] { refreshGrainEnabled(); };
+
+    for (int i = 0; i < PD_GRAIN_SHAPE_COUNT; i++)
+        grainShapeBox.addItem(juce::String(pd_grain_shape_name((pd_grain_shape_t)i)).toUpperCase(),
+                              i + 1);
+    leftHolder.addAndMakeVisible(grainShapeBox);
+    grainShapeL.setText("SHAPE", juce::dontSendNotification);
+    grainShapeL.setFont(Theme::label(10.5f));
+    grainShapeL.setJustificationType(juce::Justification::centredLeft);
+    leftHolder.addAndMakeVisible(grainShapeL);
 
     addAndMakeVisible(envEditor);
     for (auto& w : waveView) addAndMakeVisible(w);
@@ -159,7 +184,14 @@ Editor::Editor(Processor& p)
             }
             presetBox.addItem(pr->name, id++);
         }
-        presetBox.setSelectedId(1, juce::dontSendNotification);
+        /*
+         * Show what is loaded, not the first name in the list. Closing and
+         * reopening the window builds a fresh editor, and pinning this to 1
+         * meant it always came back saying Glass Tine whatever was actually
+         * playing. Found by rendering the panel with a preset chosen.
+         */
+        presetBox.setSelectedId(juce::jlimit(1, pd_preset_count(), proc.currentPreset + 1),
+                                juce::dontSendNotification);
         presetBox.onChange = [this] {
             const int idx = presetBox.getSelectedId() - 1;
             if (idx >= 0) { proc.loadPreset(idx); refreshToggles(); repaint(); }
@@ -290,6 +322,40 @@ void Editor::syncAttachments()
     aDetune     = std::make_unique<SA>(proc.apvts, Ids::line(currentLine, "detune"), detune);
     aLevel      = std::make_unique<SA>(proc.apvts, Ids::line(currentLine, "level"), level);
     aPitchDepth = std::make_unique<SA>(proc.apvts, Ids::line(currentLine, "pitch_depth"), pitchDepth);
+
+    /* Granular belongs to the line, so switching lines has to move these too.
+     * The old attachment is released before the new one is made: two live
+     * attachments on one control write to each other. */
+    aGrainOn      .reset();
+    aGrainShape   .reset();
+    aGrainEdge    .reset();
+    aGrainLen     .reset();
+    aGrainOverlap .reset();
+    aGrainOnset   .reset();
+    aGrainPitch   .reset();
+    aGrainOn      = std::make_unique<BA>(proc.apvts, Ids::line(currentLine, "grain_on"), grainBtn);
+    aGrainShape   = std::make_unique<CA>(proc.apvts, Ids::line(currentLine, "grain_shape"), grainShapeBox);
+    aGrainEdge    = std::make_unique<SA>(proc.apvts, Ids::line(currentLine, "grain_edge"), grainEdge);
+    aGrainLen     = std::make_unique<SA>(proc.apvts, Ids::line(currentLine, "grain_len"), grainLen);
+    aGrainOverlap = std::make_unique<SA>(proc.apvts, Ids::line(currentLine, "grain_overlap"), grainOverlap);
+    aGrainOnset   = std::make_unique<SA>(proc.apvts, Ids::line(currentLine, "grain_onset"), grainOnset);
+    aGrainPitch   = std::make_unique<SA>(proc.apvts, Ids::line(currentLine, "grain_pitch"), grainPitch);
+    refreshGrainEnabled();
+}
+
+/* Dim what is not doing anything. The knobs stay where they are, because a
+ * player who switches granular off and back on wants the cloud they had. */
+void Editor::refreshGrainEnabled()
+{
+    const auto* v = proc.apvts.getRawParameterValue(Ids::line(currentLine, "grain_on"));
+    const bool on = v && v->load() > 0.5f;
+    for (juce::Component* comp : { (juce::Component*)&grainShapeBox, (juce::Component*)&grainEdge,
+                                   (juce::Component*)&grainLen,      (juce::Component*)&grainOverlap,
+                                   (juce::Component*)&grainOnset,    (juce::Component*)&grainPitch })
+        comp->setEnabled(on);
+    for (juce::Label* l : { &grainShapeL, &grainEdgeL, &grainLenL,
+                            &grainOverlapL, &grainOnsetL, &grainPitchL })
+        l->setAlpha(on ? 1.0f : 0.45f);
 }
 
 void Editor::selectLine(int l)
@@ -331,6 +397,9 @@ void Editor::refreshToggles()
         for (int i = 0; i < 3; i++)
             mixBtn[i].setToggleState(i == (int)m->load(), juce::dontSendNotification);
 
+    /* Loading a preset moves the switch through the parameter, which does not
+     * come back through the button's own click, so the dimming has to be told. */
+    refreshGrainEnabled();
 }
 
 void Editor::timerCallback()
@@ -471,7 +540,8 @@ void Editor::resized()
                        + 2 * 61 + 8 + 61       /* three knob rows */
                        + 8 + 61                /* what the wheels are worth */
                        + 10 + 24 + 6 + 61      /* filter row and its knobs */
-                       + 12 + 28;              /* the mix row */
+                       + 12 + 28               /* the mix row */
+                       + 14 + 24 + 6 + 61 + 8 + 61;  /* granular */
     leftView.setBounds(leftArea);
     const bool scrolls = naturalH > leftArea.getHeight();
     leftHolder.setBounds(0, 0, kLeftW - (scrolls ? 10 : 0), juce::jmax(naturalH, leftArea.getHeight()));
@@ -539,6 +609,25 @@ void Editor::resized()
         mixBtn[i].setBounds(mixRow.removeFromLeft(84));
         mixRow.removeFromLeft(6);
     }
+
+    /* Granular, at the foot of the line's own column, because it belongs to
+     * the line rather than to the patch: one line can scatter while another
+     * plays straight, and that is most of what it is for. */
+    left.removeFromTop(14);
+    auto gRow = left.removeFromTop(24);
+    grainBtn.setBounds(gRow.removeFromLeft(96));
+    gRow.removeFromLeft(8);
+    grainShapeL.setBounds(gRow.removeFromLeft(42));
+    grainShapeBox.setBounds(gRow);
+    left.removeFromTop(6);
+    auto gA = left.removeFromTop(knobRow);
+    place(grainLen,     grainLenL,     gA.removeFromLeft(89));
+    place(grainOverlap, grainOverlapL, gA.removeFromLeft(89));
+    place(grainEdge,    grainEdgeL,    gA);
+    left.removeFromTop(8);
+    auto gB = left.removeFromTop(knobRow);
+    place(grainOnset, grainOnsetL, gB.removeFromLeft(89));
+    place(grainPitch, grainPitchL, gB.removeFromLeft(89));
 
     // middle: the envelope
     auto envRow = r.removeFromTop(28);

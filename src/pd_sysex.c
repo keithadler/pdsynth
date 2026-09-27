@@ -457,6 +457,25 @@ size_t pd_sysex_write_ex(const pd_patch_t *p, const uint8_t *base,
              "written, so the dump will sound thinner than what you hear here.",
              lines);
 
+    /*
+     * Granular has no home in a CZ voice at all. There is no byte for it, so
+     * unlike detune it cannot even be written badly: what comes back from the
+     * hardware will be the plain oscillator. Say so on the way out rather than
+     * letting somebody find out by loading their own patch and hearing a
+     * different instrument.
+     */
+    {
+        int grainy = 0;
+        for (int i = 0; i < lines && i < PD_MAX_LINES; i++)
+            if (p->line[i].grain.on) grainy++;
+        if (grainy)
+            note(report, "Granular",
+                 "%d line%s scattering into grains, which a CZ has no byte for. "
+                 "The dump keeps the waveform and the envelopes and loses the "
+                 "cloud, so it will come back as the plain tone underneath it.",
+                 grainy, grainy == 1 ? " is" : "s are");
+    }
+
     const pd_line_params_t *L1 = &p->line[0];
     const pd_line_params_t *L2 = &p->line[1];
 

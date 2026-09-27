@@ -174,9 +174,9 @@ double pd_bend_ceiling(double cycles_per_sample, double unused)
     return f < PD_BEND_MIN ? PD_BEND_MIN : f;
 }
 
-double pd_osc_next(pd_osc_t *o, pd_wave_t wave, double amount)
+double pd_osc_at(double phase, double increment, pd_wave_t wave, double amount)
 {
-    double p = o->phase;
+    const double p = phase;
     double out;
 
     if (amount < 0.0) amount = 0.0;
@@ -185,7 +185,7 @@ double pd_osc_next(pd_osc_t *o, pd_wave_t wave, double amount)
     /* The oscillator knows its own frequency, so it can hold the bend back
      * itself rather than relying on every caller to remember. */
     {
-        const double ceiling = pd_bend_ceiling(o->increment, 1.0);
+        const double ceiling = pd_bend_ceiling(increment, 1.0);
         if (amount > ceiling) amount = ceiling;
     }
 
@@ -200,14 +200,19 @@ double pd_osc_next(pd_osc_t *o, pd_wave_t wave, double amount)
         /* A resonant waveform states its harmonic outright, so it can be
          * capped exactly: never ask for a partial that will not fit. */
         double harmonic = (double)pd_resonant_harmonic(amount);
-        const double top = 0.45 / (o->increment > 1e-9 ? o->increment : 1e-9);
+        const double top = 0.45 / (increment > 1e-9 ? increment : 1e-9);
         if (harmonic > top) harmonic = floor(top) < 1.0 ? 1.0 : floor(top);
         out = sin(2.0 * M_PI * p * harmonic) * pd_window(p, wave);
     } else {
         out = sin(2.0 * M_PI * pd_distort(p, wave, amount));
     }
+    return out;
+}
 
-    o->phase = p + o->increment;
+double pd_osc_next(pd_osc_t *o, pd_wave_t wave, double amount)
+{
+    const double out = pd_osc_at(o->phase, o->increment, wave, amount);
+    o->phase += o->increment;
     if (o->phase >= 1.0) o->phase -= floor(o->phase);
     return out;
 }

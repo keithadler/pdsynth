@@ -83,6 +83,19 @@ private:
     juce::Slider detune, level, pitchDepth, noise, velWave, velLevel;
     juce::Label  detuneL, levelL, pitchDepthL, noiseL, velWaveL, velLevelL;
 
+    /*
+     * Granular, per line, and the one part of this synth a CZ could not have
+     * done. It sits at the foot of the line's own column because that is what
+     * it belongs to: each line scatters or does not, independently, and a
+     * patch with one line granular against one line plain is the point.
+     */
+    juce::TextButton grainBtn;
+    juce::ComboBox   grainShapeBox;
+    juce::Label      grainShapeL;
+    juce::Slider     grainEdge, grainLen, grainOverlap, grainOnset, grainPitch;
+    juce::Label      grainEdgeL, grainLenL, grainOverlapL, grainOnsetL, grainPitchL;
+    void refreshGrainEnabled();
+
     EnvelopeEditor envEditor;
     WaveDisplay    waveView[2];
     Scope          scope;
@@ -92,7 +105,10 @@ private:
     std::unique_ptr<SA> aGlide, aAtWave, aCutoff, aRes, aFiltEnv;
     std::unique_ptr<SA> aChoMix, aChoDepth, aChoRate, aDlyMix, aDlyTime, aDlyFb, aDrvAmount;
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
-    std::unique_ptr<CA> aFilter, aDrive;
+    std::unique_ptr<CA> aFilter, aDrive, aGrainShape;
+    using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
+    std::unique_ptr<BA> aGrainOn;
+    std::unique_ptr<SA> aGrainEdge, aGrainLen, aGrainOverlap, aGrainOnset, aGrainPitch;
 
     static int noteForKey(int keyCode);
     std::set<int> heldKeys;

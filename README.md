@@ -115,7 +115,7 @@ one save at a time.
 ctest --test-dir build
 ```
 
-Ten suites. The oscillator is judged by its spectrum, because that is the only
+Twelve suites. The oscillator is judged by its spectrum, because that is the only
 thing about an oscillator a listener can hear. The envelope is judged by where
 it is at a given moment, because one that reaches the right levels at the wrong
 time is a different instrument. The voice is judged on pitch, detuning,
@@ -140,10 +140,38 @@ with ranges, and a rate of 73 coming back as 72 would quietly alter every patch
 anybody saved. That second check is why the detune, the end step and the sign
 of a zero detune were fixed. Both run on every push.
 
+The grain cloud cannot be judged that way at all. Scattering a tone into
+windowed fragments smears its spectrum on purpose, so the off harmonic energy
+that condemns the oscillator is the effect working. `test_grain` asks a
+player's questions instead: is it still the note, does it stay that note when
+the spread opens, does the level hold when the density changes, does it click,
+does the window do anything, and does switching it off leave the synth exactly
+as it was. `pd_grainplugcheck` then does the same trip the librarian gets, out
+to the plugin's parameters and back, because a switch written to the parameters
+and never read back would leave every engine test passing and the control dead.
+
 The suites are also checked by breaking the code on purpose and seeing whether
 they notice. That is how the sysex tests grew: six deliberate faults went
 straight through the first run, all of them changes applied to both the encoder
-and the decoder, which a round trip cannot see by construction.
+and the decoder, which a round trip cannot see by construction. The grain tests
+were built the same way and thirteen faults were put through them, including
+restoring the uncentered detune from the code they came from, hardcoding the
+grain length, and making the pitch spread do nothing. The last two passed at
+first: both tests only asked whether the cloud stayed centered, which is
+something a control that does nothing passes perfectly.
+
+```
+tools/same-sound.sh v0.3.0
+```
+
+Answers a question the suites cannot: did this change move a single sample.
+Every threshold in every suite is above some size, and a drift of one part in
+ten million through the oscillator passes all twelve of them, which was
+measured rather than assumed. This renders the demo at an earlier commit and at
+the working tree and compares the bytes. It compares the machine against
+itself, never against a stored hash, because different compilers round
+differently and that is not a regression. All of the granular work above leaves
+it identical, which is what "off is off" has to mean.
 
 ## Still to come
 
@@ -155,7 +183,54 @@ verified against twenty real patch files, which is not the same as a machine.
 If you own a CZ, or the recent hardware reissue, a dump out of it and a write
 back into it would be worth more than everything above.
 
+## Granular
+
+Two lines of phase distortion is a CZ. Twenty overlapping grains of it is not,
+and could never have been: the hardware had one phase accumulator per line.
+
+Any line can be switched to a grain cloud instead of a plain oscillator. The
+grains are cut from the same phase distorted sine the rest of the synth makes,
+at the same bend, so a cloud still opens as it is played and still follows its
+DCW envelope. That is the part a sampler's granular cannot do.
+
+| | |
+|---|---|
+| **LENGTH** | one grain, 1 to 500 ms |
+| **OVERLAP** | how many sound at once |
+| **SHAPE**, **EDGE** | the window on each grain, and how sharply it opens |
+| **SCATTER** | jitter in when grains start |
+| **DETUNE** | how far apart their pitches are pulled |
+
+Length and overlap are the two that matter, and they are one control between
+them: the grain train repeats at overlap divided by length, and that rate is
+audible as a pair of sidebands either side of the note. Long grains deep in
+overlap put those sidebands close in and quiet, which is a texture. Short
+grains at an overlap below one put them far out and loud, and the note stops
+being a note. Grain Pad, Grain Shimmer and Grain Dust in the bank are those
+three places.
+
+Each line has its own cloud, so one line can scatter while another plays
+straight.
+
+A CZ voice dump has no byte for any of this, so saving a granular patch as .syx
+says so in the report rather than losing it quietly.
+
 ## Thanks
+
+To [Sean Bolton](https://github.com/smbolton), whose asynchronous granular
+oscillator in ZedSynth (formerly WhySynth) the grain scheduler and its five
+window shapes are ported from, and who gave his blessing for it; and through
+him to **Mats Olsson**, whose MSS the window shapes came from before that. Both
+notices are kept at the top of `src/pd_grain.c`, where they belong. Their code
+is GPL and so is this, which is the arrangement working as intended rather than
+a favour anyone had to do.
+
+One thing changed on the way across, and it is worth naming rather than
+burying: their per grain detune is drawn from an asymmetric range, so opening
+the spread also raises the pitch. Their source carries a `-FIX- does not center
+on frequency` note about it. Here the draw is symmetric and the detune is in
+cents, and `test_grain` measures the cloud's center against the note to hold it
+that way. Putting their version back makes that test read 176 cents sharp.
 
 To [@Reaper10](https://github.com/Reaper10). Describing what a software CZ
 ought to be is why this exists at all, and it did not stop there. Naming what
@@ -169,6 +244,7 @@ he actually caused is more use than thanking him in general:
 | "where is the filter?", with a screenshot | a status line that read as "this synth has no filter", reworded |
 | "could it do a waterphone?" | the Waterphone preset, and the measurement that decides whether it is one |
 | asking where the bend range was | bend range and mod depth given controls, having been invisible since the first release |
+| asking for a granular synth | the grain cloud on every line, and three presets for it |
 
 Most of those are not feature requests. They are somebody using the thing and
 saying what was wrong with it, which is the part that cannot be done alone.

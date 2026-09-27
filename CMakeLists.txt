@@ -14,6 +14,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_library(pdcore STATIC
   src/pd_osc.c
+  src/pd_grain.c
   src/pd_env.c
   src/pd_voice.c
   src/pd_os.c
@@ -56,7 +57,7 @@ target_link_libraries(pd_character PRIVATE pdcore)
 add_test(NAME character COMMAND pd_character)
 
 enable_testing()
-foreach(t osc env voice extras cv fx sysex)
+foreach(t osc env voice extras cv fx sysex grain)
   add_executable(test_${t} tests/test_${t}.c)
   target_link_libraries(test_${t} PRIVATE pdcore)
   add_test(NAME ${t} COMMAND test_${t})
@@ -146,6 +147,21 @@ if(PDSYNTH_BUILD_PLUGIN)
   target_link_libraries(pd_syxplugcheck PRIVATE pdcore juce::juce_audio_utils
     juce::juce_gui_basics juce::juce_dsp juce::juce_recommended_config_flags)
   add_test(NAME sysex_through_plugin COMMAND pd_syxplugcheck)
+
+  # Granular exists only above the C engine as far as the plugin is concerned:
+  # it goes out to the parameters and comes back. Either half can be left out
+  # without a compile error and without a single engine test noticing.
+  juce_add_console_app(pd_grainplugcheck PRODUCT_NAME "pd_grainplugcheck")
+  target_sources(pd_grainplugcheck PRIVATE tools/pd_grainplugcheck.cpp
+    plugin/PluginProcessor.cpp plugin/PluginEditor.cpp
+    plugin/EnvelopeEditor.cpp plugin/WaveDisplay.cpp plugin/Theme.cpp)
+  target_compile_definitions(pd_grainplugcheck PRIVATE
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_STANDALONE_APPLICATION=1
+    JucePlugin_Name="pdsynth" JucePlugin_IsSynth=1)
+  target_include_directories(pd_grainplugcheck PRIVATE plugin)
+  target_link_libraries(pd_grainplugcheck PRIVATE pdcore juce::juce_audio_utils
+    juce::juce_gui_basics juce::juce_dsp juce::juce_recommended_config_flags)
+  add_test(NAME granular_through_plugin COMMAND pd_grainplugcheck)
 
   # Draws the editor with no window, so it can be looked at rather than assumed
   juce_add_console_app(pd_uishot PRODUCT_NAME "pd_uishot")

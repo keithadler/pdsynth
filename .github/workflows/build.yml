@@ -116,6 +116,27 @@ jobs:
           cat /tmp/syx.txt
           exit $status
 
+      # Granular exists only above the engine as far as the plugin is
+      # concerned: a patch goes out to the parameters and comes back. Either
+      # half can be missing without a compile error, and every engine test
+      # would still pass while the control did nothing in the one place
+      # anybody touches it.
+      - name: Granular survives the plugin's parameters
+        shell: bash
+        run: |
+          cmake --build build --config Release --target pd_grainplugcheck --parallel 4
+          BIN=$(find build -name "pd_grainplugcheck" -o -name "pd_grainplugcheck.exe" | head -1)
+          set +e
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a "$BIN" > /tmp/grain.txt 2>&1
+          else
+            "$BIN" > /tmp/grain.txt 2>&1
+          fi
+          status=$?
+          set -e
+          cat /tmp/grain.txt
+          exit $status
+
       # pluginval is what found the AU crash and the heap corruption in Helm.
       - name: pluginval
         if: runner.os == 'macOS' || runner.os == 'Linux'

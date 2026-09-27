@@ -17,6 +17,7 @@ a level. Generated code should be regenerated, never edited.
 import pathlib
 
 W = dict(saw=0, square=1, pulse=2, dsine=3, sawpulse=4, rsaw=5, rtri=6, rtrap=7)
+GRAIN = dict(rect=0, trapezoid=1, triangle=2, gaussian=3, roadsian=4)
 MIX = dict(both=0, ring=1, noise=2)
 FLAT_R, FLAT_L = [99]*8, [99]*8
 
@@ -27,17 +28,32 @@ def env(rates, levels, sus, end):
 
 FLAT = env(FLAT_R, FLAT_L, 0, 7)
 
+class Grain:
+    """Granular, off unless a preset asks. The defaults here are the same ones
+    pd_grain_params_init uses, and they are written out for every line rather
+    than left to zero fill: a line initialized to zeros has a grain length of
+    zero, which is not off, it is broken, and it would only be found by a
+    player switching granular on inside a preset."""
+    def __init__(self, on=0, shape='roadsian', edge=0.25, length_ms=40.0,
+                 overlap=6.0, onset=0.4, pitch=0.0):
+        self.__dict__.update(locals()); del self.self
+    def c(self):
+        return ("{ %d, %d, %.4f, %.2f, %.3f, %.3f, %.3f }"
+                % (self.on, GRAIN[self.shape], self.edge, self.length_ms,
+                   self.overlap, self.onset, self.pitch))
+
 class Line:
     def __init__(self, wave, level=1.0, detune=0.0, octave=0, semis=0,
-                 wenv=None, aenv=None, penv=None, pdepth=0.0):
+                 wenv=None, aenv=None, penv=None, pdepth=0.0, grain=None):
         self.wave, self.level, self.detune = wave, level, detune
         self.octave, self.semis = octave, semis
         self.wenv, self.aenv, self.penv, self.pdepth = wenv or FLAT, aenv or FLAT, penv or FLAT, pdepth
+        self.grain = grain or Grain()
     def c(self, gain):
-        return ("{ %d, %d, %d, %.4f, %.4f, %s, %.4f, %s, %s }"
+        return ("{ %d, %d, %d, %.4f, %.4f, %s, %.4f, %s, %s, %s }"
                 % (W[self.wave], self.octave, self.semis, self.detune,
                    min(1.0, self.level * gain), self.penv, self.pdepth,
-                   self.wenv, self.aenv))
+                   self.wenv, self.aenv, self.grain.c()))
 
 DRIVE = dict(off=0, soft=1, hard=2, fold=3)
 
@@ -69,6 +85,7 @@ class Preset:
                    self.fx.c()))
 
 L = Line
+G = Grain
 PRESETS = [
  # ---------------------------------------------------------------------------
  # The sounds the machine is remembered for, built from how they are made.
@@ -233,6 +250,56 @@ PRESETS = [
    L('square', .62, -3, wenv=env([99,99,80],[62,62,0],1,2), aenv=env([99,99,74],[99,99,0],1,2)),
    L('dsine', .46, +3, octave=1, wenv=env([99,99,80],[48,48,0],1,2), aenv=env([99,99,74],[99,99,0],1,2))],
    2, velw=.0, velv=.25, gain=0.321),
+
+ # ---------------------------------------------------------------------------
+ # Granular. A CZ could not do any of this and was never going to: the hardware
+ # had one phase accumulator per line and these want twenty at once. They are
+ # here because the oscillator being granulated is still the same phase
+ # distorted sine, so a cloud keeps the DCW under it and opens as it is played,
+ # which is not what a sampler's granular does.
+ #
+ # Grain length and overlap are the two that matter. Overlap is how many are
+ # sounding at once, so the grain train repeats at overlap over length, and
+ # that rate is audible as a pair of sidebands either side of the note. Long
+ # grains at high overlap put those sidebands close in and quiet, which is a
+ # texture. Short grains at low overlap put them far out and loud, which is a
+ # new timbre rather than a treatment.
+ # ---------------------------------------------------------------------------
+
+ # Dense and slow: 90 ms grains, eight deep, with just enough detune to stop
+ # them locking together. The sidebands land under 90 Hz and are felt more than
+ # heard, so this stays a pad and does not become an effect.
+ Preset("Grain Pad", "Granular", [
+   L('dsine', .60, -4, wenv=env([46,30,34],[78,58,0],1,2), aenv=env([38,30,36],[99,82,0],1,2),
+     grain=G(on=1, shape='roadsian', edge=0.35, length_ms=90.0, overlap=8.0,
+             onset=0.5, pitch=0.06)),
+   L('saw', .34, +4, octave=-1, wenv=env([44,32,34],[62,44,0],1,2), aenv=env([40,32,36],[99,76,0],1,2),
+     grain=G(on=1, shape='gaussian', edge=0.5, length_ms=120.0, overlap=6.0,
+             onset=0.6, pitch=0.09))],
+   2, velw=.55, velv=.7, bend=2.0, modw=.45, gain=0.809,
+   fx=Fx(chorus=0.34, cho_depth=3.0, cho_rate=0.22, delay=0.22, dly_time=0.42, dly_fb=0.30)),
+
+ # Thin and fast, so the grain rate becomes the sound. 7 ms at an overlap of
+ # two puts the sidebands about 290 Hz out, which is a metallic ring rather
+ # than a texture, and the pitch spread is wide enough to keep it from being a
+ # clean ring modulator.
+ Preset("Grain Shimmer", "Granular", [
+   L('rtri', .58, 0, wenv=env([72,40,40],[92,50,0],1,2), aenv=env([70,38,42],[99,58,0],1,2),
+     grain=G(on=1, shape='triangle', edge=0.3, length_ms=7.0, overlap=2.0,
+             onset=0.35, pitch=0.18))],
+   1, velw=.7, velv=.8, modw=.5, gain=1.38,
+   fx=Fx(chorus=0.18, delay=0.26, dly_time=0.30, dly_fb=0.34, dly_tone=0.55)),
+
+ # Sparse: an overlap below one, so most of the time nothing is sounding and
+ # the grains arrive as separate events. Trapezoid rather than Gaussian because
+ # at this density each grain is heard as itself and a flat top gives it a
+ # body instead of a click.
+ Preset("Grain Dust", "Granular", [
+   L('sawpulse', .62, -6, wenv=env([88,52,46],[96,30,0],1,2), aenv=env([90,48,44],[99,20,0],1,2),
+     grain=G(on=1, shape='trapezoid', edge=0.45, length_ms=26.0, overlap=0.6,
+             onset=0.85, pitch=0.30))],
+   1, velw=.8, velv=.85, modw=.6, gain=0.754,
+   fx=Fx(delay=0.34, dly_time=0.37, dly_fb=0.42, dly_tone=0.5)),
 ]
 
 HEADER = '''/*

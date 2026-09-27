@@ -9,6 +9,7 @@
  * a panel that reads.
  */
 #include <juce_gui_basics/juce_gui_basics.h>
+
 #include "../plugin/PluginProcessor.h"
 #include "../plugin/PluginEditor.h"
 
@@ -21,6 +22,25 @@ int main(int argc, char** argv)
 
     pd::Processor proc;
     proc.prepareToPlay(48000.0, 512);
+
+    /* A fourth argument picks a preset, or names one. Looking at the panel is
+     * the only way to catch a control that is drawn under another one, and a
+     * section that only appears for some patches cannot be seen at all unless
+     * the shot can be taken with one of those loaded. */
+    if (argc > 4) {
+        const juce::String want(argv[4]);
+        int chosen = want.containsOnly("0123456789") ? want.getIntValue() : -1;
+        if (chosen < 0)
+            for (int i = 0; i < pd_preset_count(); i++)
+                if (juce::String(pd_preset(i)->name).equalsIgnoreCase(want)) chosen = i;
+        if (chosen >= 0 && chosen < pd_preset_count()) {
+            proc.loadPreset(chosen);
+            std::fprintf(stderr, "preset %d: %s\n", chosen, pd_preset(chosen)->name);
+        } else {
+            std::fprintf(stderr, "no preset '%s'\n", argv[4]);
+            return 2;
+        }
+    }
 
     /* put something through it so the meters and the live views have real
      * numbers rather than zeroes */

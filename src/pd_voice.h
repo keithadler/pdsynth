@@ -20,6 +20,7 @@
 #include "pd_env.h"
 #include "pd_os.h"
 #include "pd_filter.h"
+#include "pd_grain.h"
 
 typedef struct {
     pd_wave_t       wave;
@@ -31,6 +32,9 @@ typedef struct {
     double          pitch_env_depth_semitones;
     pd_env_params_t wave_env;       /* DCW: how far the phase is bent */
     pd_env_params_t amp_env;        /* DCA */
+
+    /* Off by default, and off means the plain oscillator to the sample. */
+    pd_grain_params_t grain;
 } pd_line_params_t;
 
 typedef enum {
@@ -71,8 +75,9 @@ typedef struct {
 } pd_patch_t;
 
 typedef struct {
-    pd_osc_t osc;
-    pd_env_t pitch, wave, amp;
+    pd_osc_t   osc;
+    pd_env_t   pitch, wave, amp;
+    pd_cloud_t cloud;   /* only stepped when the line asks for grains */
 } pd_line_t;
 
 typedef struct {

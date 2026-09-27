@@ -76,6 +76,17 @@ double pd_osc_next(pd_osc_t *o, pd_wave_t wave, double amount);
 double pd_distort(double phase, pd_wave_t wave, double amount);
 
 /*
+ * The waveform at one phase, with nothing advanced and nothing remembered.
+ *
+ * pd_osc_next is this plus a phase that moves. Pulling the sampling out lets
+ * something else own the phase, which is what the grain cloud does: a grain is
+ * a short window onto this same waveform at its own phase and its own rate,
+ * and there can be twenty of them at once. `increment` is still needed here
+ * because it decides how much bend will fit before it folds.
+ */
+double pd_osc_at(double phase, double increment, pd_wave_t wave, double amount);
+
+/*
  * The resonant waveforms do not bend phase at all. They are a sine at a whole
  * multiple of the note, multiplied by a window that falls across the cycle.
  * These two expose that window and that multiple, so a panel can show what is

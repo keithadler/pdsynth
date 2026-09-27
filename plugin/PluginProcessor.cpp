@@ -129,6 +129,44 @@ juce::AudioProcessorValueTreeState::ParameterLayout Processor::layout()
               ParameterID{Ids::line(i, "pitch_depth"), 1}, "Line " + n + " Pitch Env Depth",
               NormalisableRange<float>(-24.0f, 24.0f, 0.1f), 0.0f, semis));
 
+        /*
+         * Granular, which a CZ never had and could not have had. Off by
+         * default on every line, and off is the plain oscillator to the
+         * sample, so nothing above this point changes because these exist.
+         *
+         * Grain length is skewed so the short end, where the grain rate
+         * becomes a pitch of its own, gets as much of the knob as the long
+         * end where it is a texture. A linear 1 to 500 ms control spends most
+         * of its travel in territory that all sounds the same.
+         */
+        static const juce::StringArray shapes {
+            "Rectangular", "Trapezoid", "Triangle", "Gaussian", "Roadsian" };
+        auto gms = AudioParameterFloatAttributes().withStringFromValueFunction(
+            [](float v, int) { return juce::String(v, v < 10.0f ? 1 : 0) + " ms"; });
+        auto times = AudioParameterFloatAttributes().withStringFromValueFunction(
+            [](float v, int) { return juce::String(v, 2) + "x"; });
+
+        l.add(std::make_unique<AudioParameterBool>(
+              ParameterID{Ids::line(i, "grain_on"), 1}, "Line " + n + " Granular", false));
+        l.add(std::make_unique<AudioParameterChoice>(
+              ParameterID{Ids::line(i, "grain_shape"), 1}, "Line " + n + " Grain Shape",
+              shapes, PD_GRAIN_ROADSIAN));
+        l.add(std::make_unique<AudioParameterFloat>(
+              ParameterID{Ids::line(i, "grain_edge"), 1}, "Line " + n + " Grain Edge",
+              NormalisableRange<float>(0.0f, 1.0f), 0.25f, pct));
+        l.add(std::make_unique<AudioParameterFloat>(
+              ParameterID{Ids::line(i, "grain_len"), 1}, "Line " + n + " Grain Length",
+              NormalisableRange<float>(1.0f, 500.0f, 0.1f, 0.3f), 40.0f, gms));
+        l.add(std::make_unique<AudioParameterFloat>(
+              ParameterID{Ids::line(i, "grain_overlap"), 1}, "Line " + n + " Grain Overlap",
+              NormalisableRange<float>(0.1f, 20.0f, 0.01f, 0.5f), 6.0f, times));
+        l.add(std::make_unique<AudioParameterFloat>(
+              ParameterID{Ids::line(i, "grain_onset"), 1}, "Line " + n + " Grain Scatter",
+              NormalisableRange<float>(0.0f, 1.0f), 0.4f, pct));
+        l.add(std::make_unique<AudioParameterFloat>(
+              ParameterID{Ids::line(i, "grain_pitch"), 1}, "Line " + n + " Grain Detune",
+              NormalisableRange<float>(0.0f, 1.0f), 0.0f, pct));
+
         for (int e = 0; e < 3; e++) {
             auto en = juce::String(kEnvNames[e]);
             for (int s = 0; s < PD_ENV_STEPS; s++) {
@@ -274,6 +312,14 @@ void Processor::pullParameters()
         L.detune_cents = raw(Ids::line(i, "detune"));
         L.level        = raw(Ids::line(i, "level"));
         L.pitch_env_depth_semitones = raw(Ids::line(i, "pitch_depth"));
+
+        L.grain.on           = raw(Ids::line(i, "grain_on")) > 0.5f;
+        L.grain.shape        = (pd_grain_shape_t)(int)raw(Ids::line(i, "grain_shape"));
+        L.grain.edge         = raw(Ids::line(i, "grain_edge"));
+        L.grain.length_ms    = raw(Ids::line(i, "grain_len"));
+        L.grain.overlap      = raw(Ids::line(i, "grain_overlap"));
+        L.grain.onset_spread = raw(Ids::line(i, "grain_onset"));
+        L.grain.pitch_spread = raw(Ids::line(i, "grain_pitch"));
 
         pd_env_params_t* envs[3] = { &L.pitch_env, &L.wave_env, &L.amp_env };
         for (int e = 0; e < 3; e++) {
@@ -434,6 +480,13 @@ void Processor::applyPatch(const pd_patch_t& q)
         setRanged(Ids::line(i, "octave"), (float)L.octave);
         setRanged(Ids::line(i, "semis"), (float)L.semitones);
         setRanged(Ids::line(i, "detune"), (float)L.detune_cents);
+        setRanged(Ids::line(i, "grain_on"),      L.grain.on ? 1.0f : 0.0f);
+        setRanged(Ids::line(i, "grain_shape"),   (float)(int)L.grain.shape);
+        setRanged(Ids::line(i, "grain_edge"),    (float)L.grain.edge);
+        setRanged(Ids::line(i, "grain_len"),     (float)L.grain.length_ms);
+        setRanged(Ids::line(i, "grain_overlap"), (float)L.grain.overlap);
+        setRanged(Ids::line(i, "grain_onset"),   (float)L.grain.onset_spread);
+        setRanged(Ids::line(i, "grain_pitch"),   (float)L.grain.pitch_spread);
         setRanged(Ids::line(i, "level"), (float)L.level);
         setRanged(Ids::line(i, "pitch_depth"), (float)L.pitch_env_depth_semitones);
 

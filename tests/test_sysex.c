@@ -645,6 +645,34 @@ int main(void)
            "refuses a short buffer");
     }
 
+    /*
+     * Granular has no byte in a CZ voice, so it cannot even be written badly.
+     * Saving a cloud has to say that out loud, or somebody sends their patch
+     * to the hardware and gets a different instrument back with no warning.
+     */
+    printf("-- granular is named on the way out --\n");
+    {
+        pd_patch_t p;
+        pd_patch_init(&p);
+        uint8_t out[PD_SYSEX_BYTES];
+        pd_sysex_report_t rep;
+
+        pd_sysex_report_init(&rep);
+        pd_sysex_write(&p, 0, 0x60, out, sizeof out, &rep);
+        int said = 0;
+        for (int i = 0; i < rep.count; i++)
+            if (strstr(rep.note[i].control, "Granular")) said = 1;
+        ok(!said, "a patch with no grains says nothing about granular");
+
+        p.line[0].grain.on = 1;
+        pd_sysex_report_init(&rep);
+        pd_sysex_write(&p, 0, 0x60, out, sizeof out, &rep);
+        said = 0;
+        for (int i = 0; i < rep.count; i++)
+            if (strstr(rep.note[i].control, "Granular")) said = 1;
+        ok(said, "a patch with grains is told they will not survive the trip");
+    }
+
     printf("\n%d passed, %d failed\n", passed, failed);
     return failed ? 1 : 0;
 }
