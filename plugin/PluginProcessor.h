@@ -91,6 +91,23 @@ public:
     bool loadSysex(const juce::File&, juce::String& report);
     bool saveSysex(const juce::File&, juce::String& report);
 
+    /* How many things the last transfer could not carry, and how many it had
+     * no room to even mention. Counted rather than parsed back out of the
+     * report's prose: the first attempt at the status line looked for a bullet
+     * character that formatReport does not write, so it would have said
+     * "nothing lost" after every transfer, including the lossy ones. */
+    int lastLostCount = 0;
+    int lastDropped   = 0;
+
+    /*
+     * One line saying what the last transfer did, kept here rather than in the
+     * editor so it survives the window being closed and reopened, and so a
+     * headless tool can exercise the same path a player does.
+     */
+    juce::String lastTransfer;
+    bool         lastTransferOk = true;
+    void noteTransfer(bool ok, const juce::String& what);
+
     /* Notes played on the computer keyboard. They join the same MIDI stream the
      * host sends, so there is one path into the synth rather than two. */
     juce::MidiMessageCollector uiNotes;

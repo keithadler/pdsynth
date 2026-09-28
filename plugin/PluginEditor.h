@@ -65,6 +65,8 @@ private:
      * patches is worth more than one that cannot, and the file chooser has to
      * outlive the call that opened it, so it is kept here. */
     juce::TextButton loadSyxBtn, saveSyxBtn;
+
+
     std::unique_ptr<juce::FileChooser> chooser;
     void chooseSysexToLoad();
     void chooseSysexToSave();

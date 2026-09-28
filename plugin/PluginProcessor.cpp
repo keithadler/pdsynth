@@ -557,10 +557,30 @@ static juce::String formatReport(const pd_sysex_report_t& r, const juce::String&
     return t;
 }
 
+/*
+ * What to say about a transfer that has just happened.
+ *
+ * The counts come from the report structure rather than from its prose. The
+ * first attempt read them back out of the formatted text by looking for a
+ * bullet character that formatReport does not write, which would have reported
+ * "nothing lost" after every transfer including the lossy ones.
+ */
+void Processor::noteTransfer(bool ok, const juce::String& what)
+{
+    lastTransferOk = ok;
+    if (!ok) { lastTransfer = what + " failed"; return; }
+    const int losses = lastLostCount + lastDropped;
+    lastTransfer = losses == 0
+        ? what + ", nothing lost"
+        : what + ", " + juce::String(losses)
+               + (losses == 1 ? " thing did not travel" : " things did not travel");
+}
+
 bool Processor::loadSysex(const juce::File& f, juce::String& report)
 {
     juce::MemoryBlock mb;
-    if (!f.loadFileAsData(mb)) { report = "That file could not be read."; return false; }
+    if (!f.loadFileAsData(mb)) { report = "That file could not be read.";
+        noteTransfer(false, "read " + f.getFileName()); return false; }
 
     /*
      * A bank is several voice dumps in one file, which is what a CZ sends when
@@ -598,7 +618,10 @@ bool Processor::loadSysex(const juce::File& f, juce::String& report)
             ? "Loaded the first of " + juce::String(voices) + " voices in "
                   + f.getFileName() + ". The others are still in the file."
             : "Loaded " + f.getFileName() + ".";
+    lastLostCount = rep.count;
+    lastDropped   = rep.dropped;
     report = formatReport(rep, lead);
+    noteTransfer(true, "read " + f.getFileName());
     return true;
 }
 
@@ -609,11 +632,15 @@ bool Processor::saveSysex(const juce::File& f, juce::String& report)
     pd_sysex_report_t rep;
     const size_t n = pd_sysex_write_ex(&patch, haveSysexBase ? sysexBase : nullptr,
                                        0, 0x60, out, sizeof out, &rep);
-    if (n == 0) { report = "The dump could not be written."; return false; }
+    if (n == 0) { report = "The dump could not be written.";
+        noteTransfer(false, "wrote " + f.getFileName()); return false; }
     if (!f.replaceWithData(out, n)) {
         report = "That file could not be written.";
         return false;
     }
+    lastLostCount = rep.count;
+    lastDropped   = rep.dropped;
+    noteTransfer(true, "wrote " + f.getFileName());
     report = formatReport(rep, "Wrote " + f.getFileName()
                                + ", " + juce::String((int)n) + " bytes.");
     return true;

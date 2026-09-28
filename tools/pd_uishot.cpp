@@ -51,6 +51,16 @@ int main(int argc, char** argv)
     midi.clear();
     for (int i = 0; i < 12; i++) proc.processBlock(buf, midi);
 
+    /* A fifth argument loads a .syx first, so the librarian's status line can
+     * actually be looked at. Everything else about that line is reachable only
+     * through a file dialog, which a headless run has no way to drive. */
+    if (argc > 5) {
+        juce::String rep;
+        const bool ok = proc.loadSysex(juce::File(juce::String(argv[5])), rep);
+        std::fprintf(stderr, "loadSysex: %s\n%s\n", ok ? "ok" : "failed",
+                     proc.lastTransfer.toRawUTF8());
+    }
+
     std::unique_ptr<juce::AudioProcessorEditor> ed(proc.createEditor());
     ed->setSize(w, h);
 

@@ -70,18 +70,56 @@ class Fx:
                    self.delay, self.dly_time, self.dly_fb, self.dly_tone,
                    DRIVE[self.drive], self.drive_amt))
 
+MAX_LINES = 4    # PD_MAX_LINES
+FILTER = dict(off=0, lowpass=1, highpass=2, bandpass=3)
+
 class Preset:
-    def __init__(self, name, family, lines, count=1, mix='both', noise=0.0,
-                 velw=0.5, velv=0.8, bend=2.0, modw=0.3, gain=1.0, fx=None):
+    """
+    All four lines, not two.
+
+    The engine has had PD_MAX_LINES of 4 since it was written, and every preset
+    in the bank used two, because this generator only ever emitted two and the
+    rest were left to zero fill.
+
+    Every field of the patch is written now, for the same reason. Stopping at
+    `mod_to_wave` left the rest to zero fill, and two of those zeros were wrong:
+    `spread` came out 0 when the engine's own default is 0.45, so the whole bank
+    played in mono, and `filter_cutoff_hz` came out 0, so switching the filter on
+    in any factory preset dropped it to a few percent of its level. The status
+    line in the plugin invites a player to do exactly that. Nothing warned about
+    either, because a missing initializer is a compiler warning nobody reads and
+    a quiet zero everywhere else. A line of zeros has a level of zero, so nothing
+    sounded wrong and nothing said anything was missing. If `count` is more than
+    the number of lines given, the extras are silent rather than absent, which
+    is a different bug and a quieter one, so that is checked here instead.
+    """
+    def __init__(self, name, family, lines, count=None, mix='both', noise=0.0,
+                 velw=0.5, velv=0.8, bend=2.0, modw=0.3, gain=1.0, fx=None,
+                 spread=0.45, glide=0.0, at_wave=0.0, at_level=0.0,
+                 filt='off', cutoff=8000.0, res=0.2, filt_env=0.0, filt_key=0.0):
         self.__dict__.update(locals()); del self.self
         self.fx = fx or Fx()
-        while len(self.lines) < 2:
+        assert 1 <= len(self.lines) <= MAX_LINES, \
+            "%s: %d lines, the engine holds %d" % (name, len(self.lines), MAX_LINES)
+        # Saying how many lines sound is the same as listing them, so it is not
+        # asked for twice. A preset that wants a line built but not counted can
+        # still say so.
+        if self.count is None:
+            self.count = len(self.lines)
+        assert self.count <= len(self.lines), \
+            "%s: counts %d lines but defines %d" % (name, self.count, len(self.lines))
+        while len(self.lines) < MAX_LINES:
             self.lines.append(Line('saw', level=0.0))
     def c(self):
-        return ('    { "%s", "%s", { { %s, %s }, %d, %d, %.3f, %.3f, %.3f, %.2f, %.3f }, %s },'
-                % (self.name, self.family, self.lines[0].c(self.gain),
-                   self.lines[1].c(self.gain), self.count, MIX[self.mix],
+        return ('    { "%s", "%s", { { %s }, %d, %d, %.3f, %.3f, %.3f, %.2f, %.3f, '
+                '%.3f, %.3f, %.3f, %.3f, %d, %.1f, %.3f, %.3f, %.3f }, %s },'
+                % (self.name, self.family,
+                   ", ".join(l.c(self.gain) for l in self.lines),
+                   self.count, MIX[self.mix],
                    self.noise, self.velw, self.velv, self.bend, self.modw,
+                   self.spread, self.glide, self.at_wave, self.at_level,
+                   FILTER[self.filt], self.cutoff, self.res,
+                   self.filt_env, self.filt_key,
                    self.fx.c()))
 
 L = Line
@@ -300,6 +338,38 @@ PRESETS = [
              onset=0.85, pitch=0.30))],
    1, velw=.8, velv=.85, modw=.6, gain=0.754,
    fx=Fx(delay=0.34, dly_time=0.37, dly_fb=0.42, dly_tone=0.5)),
+
+ # ---------------------------------------------------------------------------
+ # The hurdy-gurdy, which is three instruments in one box and needs three lines.
+ #
+ # A wheel turns against the strings and bows all of them at once, so nothing
+ # here decays: the note stops when the wheel stops. That is the first line, a
+ # melody string, nasal and reedy because a rosined wheel is a rough bow.
+ #
+ # The second is a drone. Real ones carry one or two, tuned an octave or a fifth
+ # under the melody and sounding the whole time whatever is fingered, which is
+ # why the instrument sounds like a bagpipe made of wood.
+ #
+ # The third is the part that makes it a hurdy-gurdy rather than a fiddle. The
+ # chien, the dog: a loose bridge under one string that lifts and rattles when
+ # the player accelerates the wheel, and it is the rhythm section. A rattle is
+ # not a pitch, so nothing in a phase distortion oscillator can make one. A
+ # grain cloud can: short grains at an overlap below one arrive separately and
+ # irregularly, and that is a buzz rather than a tone. The granular is doing
+ # something here that the rest of this synth cannot, which is the argument for
+ # it living inside pdsynth rather than off on its own.
+ # ---------------------------------------------------------------------------
+ Preset("Hurdy Gurdy", "Hurdy", [
+   # the melody string, bowed by the wheel: no decay, and a rough edge
+   L('rsaw', .52, -6, wenv=env([34,26,30],[62,52,0],1,2), aenv=env([30,26,30],[99,92,0],1,2)),
+   # the drone, an octave under and never fingered
+   L('saw', .40, +7, octave=-1, wenv=env([28,24,28],[44,40,0],1,2), aenv=env([26,24,28],[99,96,0],1,2)),
+   # the chien: a rattle, not a note
+   L('sawpulse', .30, 0, octave=1, wenv=env([80,44,40],[88,40,0],1,2), aenv=env([44,30,34],[99,84,0],1,2),
+     grain=G(on=1, shape='trapezoid', edge=0.4, length_ms=9.0, overlap=0.85,
+             onset=0.9, pitch=0.42))],
+   velw=.6, velv=.55, modw=.5, gain=1.056, spread=0.6,
+   fx=Fx(chorus=0.16, cho_depth=2.2, cho_rate=0.30, delay=0.12, dly_time=0.26, dly_fb=0.20)),
 ]
 
 HEADER = '''/*

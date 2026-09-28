@@ -476,6 +476,16 @@ void Editor::paint(juce::Graphics& g)
                          + " engaged, which a CZ never had",
                juce::Rectangle<int>(22, 58, getWidth() - 240, 16),
                juce::Justification::centredLeft, false);
+
+    if (proc.lastTransfer.isNotEmpty()) {
+        const int losses = proc.lastLostCount + proc.lastDropped;
+        g.setColour(!proc.lastTransferOk ? juce::Colour(0xffd08080)
+                    : losses == 0        ? juce::Colour(0xff80c080)
+                                         : juce::Colour(0xffd0b070));
+        g.drawText(proc.lastTransfer,
+                   juce::Rectangle<int>(getWidth() - 470, 58, 448, 16),
+                   juce::Justification::centredRight, true);
+    }
 }
 
 void Editor::resized()
@@ -778,6 +788,7 @@ void Editor::chooseSysexToSave()
             if (f == juce::File()) return;
             juce::String report;
             const bool ok = proc.saveSysex(f, report);
+            repaint();
             showReport(ok ? "Voice written" : "Could not write the dump", report);
         });
 }

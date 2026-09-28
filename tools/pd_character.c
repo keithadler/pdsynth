@@ -193,6 +193,37 @@ int main(void)
         } else if (!strcmp(f, "Bell")) {
             want(at1 > 0.20, n, "a bell rings on", at1, 0.20, 9.9);
             want(b_on > 3.0, n, "and is rich at the strike", b_on, 3.0, 99.0);
+        } else if (!strcmp(f, "Hurdy")) {
+            /*
+             * A hurdy-gurdy is three things sounding at once and the test is
+             * that all three are there.
+             *
+             * The wheel bows continuously, so nothing decays and the attack is
+             * a bow rather than a strike. A drone sits an octave under the
+             * melody and never stops. And the chien, the loose bridge that
+             * rattles, is the one that cannot be faked: a rattle has no pitch,
+             * so a phase distortion oscillator cannot make one on its own.
+             * That last measurement is the reason this preset needs the grain
+             * cloud, so it is the one worth being strict about.
+             */
+            want(at1 > 0.5, n, "the wheel does not stop, so neither does the note", at1, 0.5, 9.9);
+            want(a_ms > 40, n, "bowed by a wheel, so it takes a moment to speak (ms)", a_ms, 40.0, 9999.0);
+
+            const double drone = mag_at(f0, 0.40, 0.20);
+            const double under = mag_at(f0 * 0.5, 0.40, 0.20);
+            want(drone > 0 && under > drone * 0.5, n,
+                 "a drone an octave under has to be sounding too",
+                 drone > 0 ? under / drone : 0.0, 0.5, 99.0);
+
+            /*
+             * Measured: 0.36 as built. Switch the chien's grain cloud off and
+             * it reads 0.03, and take the line away entirely and it reads 0.09.
+             * A threshold of 0.20 sits clear of both, so this fails if the
+             * buzz stops being a buzz.
+             */
+            const double buzz = between_harmonics(&pr->patch, f0, 0.40, 0.20);
+            want(buzz > 0.20, n, "the chien has to rattle, not hum", buzz, 0.20, 99.0);
+
         } else if (!strcmp(f, "Water")) {
             /* The defining trait, and the hard one: a waterphone's partials
              * are not harmonics. Anything a bent sine does on its own would

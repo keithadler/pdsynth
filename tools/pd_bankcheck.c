@@ -78,6 +78,41 @@ static double centroid(int from)
     return den > 0 ? num / den : 0;
 }
 
+
+/*
+ * What happens if the player switches the filter on.
+ *
+ * A CZ has no filter and pdsynth's is off in every preset, so this was never
+ * measured. Then the generator was found to be leaving `filter_cutoff_hz` to
+ * zero fill, and switching the filter on in a factory preset dropped it to
+ * between one and seventeen percent of its level. The plugin's own status line
+ * invites exactly that: "no filter engaged, as on a CZ. FILTER, in the left
+ * column, adds one."
+ *
+ * Off by default is not a reason not to check it. A control the interface
+ * offers has to do something survivable when it is used.
+ *
+ * The filter lives on the stereo path, so this cannot use `render`, which sums
+ * the lines and never calls it. Getting that wrong first made the filter look
+ * like it did nothing at all.
+ */
+static double with_filter(const pd_patch_t *p, pd_filter_mode_t mode)
+{
+    pd_patch_t q = *p;
+    q.filter_mode = mode;
+    pd_voice_t v;
+    pd_voice_init(&v, &q, SR);
+    pd_voice_note_on(&v, 60, 0.9);
+    const int n = (int)(0.5 * SR) * PD_OVERSAMPLE;
+    double sum = 0;
+    for (int i = 0; i < n; i++) {
+        double l, r;
+        pd_voice_next_inner(&v, &l, &r);
+        sum += (l + r) * (l + r);
+    }
+    return sqrt(sum / (double)n);
+}
+
 int main(void)
 {
     const int count = pd_preset_count();
@@ -139,7 +174,24 @@ int main(void)
         if (velL[i] < 1.2) dead++;
         if (bright[i] < 1.15 * 164.8) dull++;   /* 164.8 Hz is the note played */
     }
+    /* Switching the filter on has to leave a sound behind. */
+    int muted = 0;
+    for (int i = 0; i < count; i++) {
+        const pd_patch_t *pp = &pd_preset(i)->patch;
+        const double off = with_filter(pp, PD_FILTER_OFF);
+        const double on  = with_filter(pp, PD_FILTER_LOWPASS);
+        if (off > 1e-6 && on / off < 0.5) {
+            printf("  %-16s loses %.0f%% of its level when the filter is switched on "
+                   "(cutoff %.0f Hz)\n",
+                   pd_preset(i)->name, 100.0 * (1.0 - on / off),
+                   pp->filter_cutoff_hz);
+            muted++;
+            problems++;
+        }
+    }
+
     printf("velocity: %d of %d respond\n", count - dead, count);
+    printf("filter: %d of %d survive being switched on\n", count - muted, count);
     printf("timbre: %d of %d carry harmonics above a sine\n", count - dull, count);
     printf("%d problems\n", problems);
     return problems ? 1 : 0;
