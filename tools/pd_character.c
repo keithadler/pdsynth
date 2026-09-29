@@ -58,6 +58,36 @@ static void play(const pd_patch_t *p, int note, double vel, double hold)
     }
 }
 
+
+/*
+ * The same note, rendered through the path that has a filter.
+ *
+ * pd_voice_next sums the lines and returns; the filter lives on
+ * pd_voice_next_inner, which is where the voices are placed in stereo. So
+ * anything about a filter measured through `play` above measures nothing at
+ * all, which cost a round of confusion in pd_bankcheck on the same day this
+ * was written. Formants are made by the filter, so they need this.
+ *
+ * The result is decimated back to SR by keeping one inner sample in
+ * PD_OVERSAMPLE, which is crude next to what the voice does properly, but this
+ * is measuring where the energy sits rather than listening to it.
+ */
+static void play_filtered(const pd_patch_t *p, int note, double vel)
+{
+    pd_voice_t v;
+    pd_voice_init(&v, p, SR);
+    pd_voice_note_on(&v, note, vel);
+    used = N;
+    for (int i = 0; i < N; i++) {
+        double l = 0, r = 0, dl, dr;
+        for (int k = 0; k < PD_OVERSAMPLE; k++) {
+            pd_voice_next_inner(&v, &dl, &dr);
+            l = dl; r = dr;
+        }
+        buf[i] = l + r;
+    }
+}
+
 static double rms_at(double sec, double win)
 {
     int a = (int)(sec * SR), b = a + (int)(win * SR);
@@ -80,6 +110,69 @@ static double mag_at(double hz, double from, double win)
     }
     return sqrt(re * re + im * im) / n;
 }
+
+/*
+ * Where the energy sits above the fundamental, which is what a formant moves
+ * and a single loudest bin does not see: on a harmonic sound the loudest bin
+ * is almost always the fundamental, whatever the filter is doing.
+ */
+/*
+ * How much of the sound above the fundamental sits in a band around `f`.
+ *
+ * This is the measurement that says a formant is actually there. Asking only
+ * whether the timbre stays put as the note moves is not enough: a plain saw
+ * with no filter at all also keeps a fairly steady centre inside a fixed
+ * window, so that test passed with the formant switched off. Measured on
+ * Vowel Choir: 0.89 and 0.25 at two octaves apart as built, 0.19 and 0.03 with
+ * the filter off, and 0.01 with key tracking turned up, which moves the
+ * resonance away with the pitch.
+ */
+static double band_share(double f, double lo, double hi)
+{
+    double in = 0, all = 0;
+    for (double hz = lo; hz < hi; hz *= 1.01) {
+        const double m = mag_at(hz, 0.30, 0.20);
+        const double p2 = m * m;
+        all += p2;
+        if (hz > f / 1.35 && hz < f * 1.35) in += p2;
+    }
+    return all > 0 ? in / all : 0.0;
+}
+
+/*
+ * How much of the sound lives above the fundamental at all.
+ *
+ * band_share is a ratio, and a ratio of almost nothing to almost nothing is
+ * not an answer. Replace the source with a sine and there is nothing in the
+ * measuring window but the filter's own ringing, so the share reads high and
+ * the formant test passes on a patch that has no harmonics for a formant to
+ * shape. That is the same shape as the waterphone bug in this file's history,
+ * where silence read 0.3448 and sailed past a threshold of 0.25.
+ */
+static double harmonic_content(double from, double to)
+{
+    double above = 0, total = 0;
+    for (double hz = 40.0; hz < to; hz *= 1.01) {
+        const double m = mag_at(hz, 0.30, 0.20);
+        const double p2 = m * m;
+        total += p2;
+        if (hz >= from) above += p2;
+    }
+    return total > 0 ? above / total : 0.0;
+}
+
+static double timbre_centre(double from, double to)
+{
+    double num = 0, den = 0;
+    for (double hz = from; hz < to; hz *= 1.01) {
+        const double m = mag_at(hz, 0.30, 0.20);
+        const double p2 = m * m;
+        num += p2 * hz;
+        den += p2;
+    }
+    return den > 0 ? num / den : 0.0;
+}
+
 /* brightness relative to the note, so it can be compared across pitches */
 static double bright(double f0, double from, double win)
 {
@@ -193,6 +286,69 @@ int main(void)
         } else if (!strcmp(f, "Bell")) {
             want(at1 > 0.20, n, "a bell rings on", at1, 0.20, 9.9);
             want(b_on > 3.0, n, "and is rich at the strike", b_on, 3.0, 99.0);
+        } else if (!strcmp(f, "Voice")) {
+            /*
+             * What makes a vowel a vowel is a formant, and what makes it a
+             * formant rather than a filter sweep is that it does not move when
+             * the note does. "Ah" is recognisably "ah" whether a bass or a
+             * soprano sings it, because the resonance belongs to the throat
+             * and not to the pitch.
+             *
+             * So this plays the same patch two octaves apart, where the note
+             * moves by four, and asks how far the timbre moved. Measured: this
+             * holds to about 1.3. Turn the filter's key tracking up to 1 and
+             * the same patch reads 3.4, which is a wah rather than a vowel,
+             * and is what almost every synthesizer "choir" actually does.
+             */
+            const double F = pr->patch.filter_cutoff_hz;
+
+            play_filtered(&pr->patch, 48, 0.9);
+            const double low   = timbre_centre(350.0, 3000.0);
+            const double share_lo = band_share(F, 300.0, 4000.0);
+            play_filtered(&pr->patch, 72, 0.9);
+            const double high  = timbre_centre(350.0, 3000.0);
+            const double share_hi = band_share(F, 300.0, 4000.0);
+            const double moved = (low > 1.0) ? high / low : 99.0;
+
+            want(low > 1.0 && high > 1.0, n,
+                 "it has to be sounding at both notes to be measured", low, 1.0, 9999.0);
+
+            /*
+             * The resonance has to be there, at both notes, or "it did not
+             * move" is a claim about nothing. Switching the filter off leaves
+             * the note two octaves up reading 0.03 here.
+             */
+            /*
+             * And there has to be something there to shape. A formant filters
+             * harmonics; a source with none cannot have a vowel, however the
+             * ratio reads.
+             */
+            play_filtered(&pr->patch, 48, 0.9);
+            const double rich = harmonic_content(300.0, 4000.0);
+            want(rich > 0.10, n,
+                 "a vowel needs harmonics above the fundamental to shape",
+                 rich, 0.10, 1.0);
+
+            want(share_lo > 0.15, n,
+                 "a formant has to actually be at the formant frequency, low note",
+                 share_lo, 0.15, 1.0);
+            want(share_hi > 0.15, n,
+                 "and still be there two octaves up", share_hi, 0.15, 1.0);
+            want(moved < 1.8, n,
+                 "the formant must not follow the note (moved x, over 4x of pitch)",
+                 moved, 0.0, 1.8);
+            want(moved > 1.0 / 1.8, n,
+                 "and must not run backwards either", moved, 1.0 / 1.8, 1.8);
+
+            /* and it still has to behave like something sung */
+            play(&pr->patch, 60, 0.95, 1.2);
+            const double e2 = rms_at(0.03, 0.05);
+            want(e2 > 0 && rms_at(1.00, 0.05) / e2 > 0.40, n,
+                 "a held note is still sounding after a second",
+                 e2 > 0 ? rms_at(1.00, 0.05) / e2 : 0.0, 0.40, 9.9);
+            want(attack_ms() > 25, n,
+                 "and a voice does not start instantly (ms)", attack_ms(), 25.0, 9999.0);
+
         } else if (!strcmp(f, "Hurdy")) {
             /*
              * A hurdy-gurdy is three things sounding at once and the test is

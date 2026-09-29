@@ -370,6 +370,39 @@ PRESETS = [
              onset=0.9, pitch=0.42))],
    velw=.6, velv=.55, modw=.5, gain=1.056, spread=0.6,
    fx=Fx(chorus=0.16, cho_depth=2.2, cho_rate=0.30, delay=0.12, dly_time=0.26, dly_fb=0.20)),
+
+ # ---------------------------------------------------------------------------
+ # A voice, built the way a voice works.
+ #
+ # Choir Ah above is a vocal pad: detuned, breathy, slow, and it sounds like a
+ # choir the way a string pad sounds like strings. What it does not have is the
+ # thing that actually makes a vowel a vowel.
+ #
+ # A vowel is a formant: a fixed resonance of the throat and mouth that does
+ # not move when you sing a different note. That is why "ah" is recognisably
+ # "ah" whether a bass or a soprano sings it, and it is the one property a
+ # synthesizer usually gets wrong, because a filter that tracks the keyboard
+ # moves the formant with the pitch and the vowel turns into a wah.
+ #
+ # A CZ could not do this. Its resonant waveforms put a peak at a whole
+ # multiple of the note, so their formant follows the pitch by construction,
+ # which is exactly why CZ vocal patches sound synthetic. pdsynth's filter can,
+ # with key tracking at zero: a bandpass that stays where it is put.
+ #
+ # Measured across two octaves, where the note itself moves by four: this holds
+ # its centre of gravity to about 1.3x. Turn key tracking up and the same patch
+ # moves 3.4x, which is the wah. pd_character tests exactly that.
+ # ---------------------------------------------------------------------------
+ Preset("Vowel Choir", "Voice", [
+   # the cords: buzzy and harmonically rich, because a formant can only shape
+   # what is already there
+   L('saw', .62, -9, wenv=env([40,34,38],[92,84,0],1,2), aenv=env([46,40,44],[99,94,0],1,2)),
+   L('saw', .54, +9, wenv=env([38,32,36],[90,82,0],1,2), aenv=env([44,38,42],[99,92,0],1,2)),
+   # a third singer an octave down, for the body under the vowel
+   L('sawpulse', .34, -3, octave=-1, wenv=env([36,30,34],[72,64,0],1,2), aenv=env([42,36,40],[99,90,0],1,2))],
+   velw=.3, velv=.45, modw=.4, gain=0.56, spread=0.7,
+   filt='bandpass', cutoff=780.0, res=0.72, filt_env=0.0, filt_key=0.0,
+   fx=Fx(chorus=0.46, cho_depth=5.0, cho_rate=0.21, delay=0.18, dly_time=0.38, dly_fb=0.22)),
 ]
 
 HEADER = '''/*
