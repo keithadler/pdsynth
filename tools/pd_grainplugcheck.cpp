@@ -191,6 +191,49 @@ int main()
         ok(true, "no ordinary preset arrives with grains switched on");
     }
 
+    /* ---- the hardware-only view ---- */
+    say("\nthe CZ ONLY view");
+    {
+        pd::Processor p;
+        ok(!p.czOnly(), "everything is shown by default");
+
+        p.setCzOnly(true);
+        ok(p.czOnly(), "and the view can be switched");
+
+        /*
+         * A view preference that does not survive a reload is the kind of
+         * thing nobody notices until they have set it twenty times. It rides
+         * in the state tree beside the parameters, so this checks it comes
+         * back rather than assuming it does.
+         */
+        juce::MemoryBlock state;
+        p.getStateInformation(state);
+
+        pd::Processor q;
+        q.setStateInformation(state.getData(), (int)state.getSize());
+        ok(q.czOnly(), "and it survives being saved and reloaded");
+
+        pd::Processor r;
+        juce::MemoryBlock plain;
+        r.getStateInformation(plain);
+        pd::Processor t;
+        t.setCzOnly(true);
+        t.setStateInformation(plain.getData(), (int)plain.getSize());
+        ok(!t.czOnly(), "a session saved without it does not turn it on");
+
+        /* And the editor has to build in both, since half the panel is being
+         * hidden and the layout arithmetic changes with it. */
+        for (int pass = 0; pass < 2; pass++) {
+            pd::Processor e;
+            e.setCzOnly(pass == 1);
+            std::unique_ptr<juce::AudioProcessorEditor> ed(e.createEditor());
+            ed->setSize(1040, 900);
+            ok(ed != nullptr && ed->getWidth() == 1040,
+               pass ? "the editor builds with the CZ view on"
+                    : "the editor builds with the CZ view off");
+        }
+    }
+
     say(failures ? "\n" + juce::String(failures) + " failure(s)" : "\nall good");
     return failures ? 1 : 0;
 }

@@ -183,6 +183,25 @@ verified against twenty real patch files, which is not the same as a machine.
 If you own a CZ, or the recent hardware reissue, a dump out of it and a write
 back into it would be worth more than everything above.
 
+## CZ ONLY
+
+A CZ-101 is two lines, three eight step envelopes each, ring and noise
+modulation, a bend wheel and portamento. pdsynth adds a filter, a grain cloud,
+two more lines, aftertouch and a rack of effects, and somebody who came here for
+a CZ has to work out which half of the panel is the instrument.
+
+**CZ ONLY**, in the header, hides everything the hardware never had.
+
+It is a view and not a mode. Nothing is switched off and no sound changes, so
+anything hidden that is still running says so on screen rather than becoming
+invisible and inexplicable: load a preset with chorus on, switch the view, and
+the line under the header reads *hidden and still running: chorus*. The
+preference travels in the saved session.
+
+This is Reaper10's objection and his suggestion was to split the extra parts
+into a separate plugin. That would cost anyone who wants both, and it would not
+help anyone who wants the extras, so the panel hides them instead.
+
 ## Granular
 
 Two lines of phase distortion is a CZ. Twenty overlapping grains of it is not,
@@ -210,7 +229,10 @@ being a note. Grain Pad, Grain Shimmer and Grain Dust in the bank are those
 three places.
 
 Each line has its own cloud, so one line can scatter while another plays
-straight.
+straight. **Hurdy Gurdy** in the bank is why that matters: its melody string and
+its drone are plain oscillators and its chien, the loose bridge that rattles, is
+a grain cloud, because a rattle has no pitch and nothing in a phase distortion
+oscillator can make one.
 
 A CZ voice dump has no byte for any of this, so saving a granular patch as .syx
 says so in the report rather than losing it quietly.

@@ -648,6 +648,17 @@ bool Processor::saveSysex(const juce::File& f, juce::String& report)
 
 juce::AudioProcessorEditor* Processor::createEditor() { return new Editor(*this); }
 
+/* A CZ has one filter fewer, two lines fewer, no grains and no effects. */
+bool Processor::czOnly() const
+{
+    return (bool)apvts.state.getProperty("czOnly", false);
+}
+
+void Processor::setCzOnly(bool on)
+{
+    apvts.state.setProperty("czOnly", on, nullptr);
+}
+
 void Processor::getStateInformation(juce::MemoryBlock& dest)
 {
     if (auto xml = apvts.copyState().createXml()) copyXmlToBinary(*xml, dest);

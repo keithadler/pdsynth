@@ -108,6 +108,28 @@ public:
     bool         lastTransferOk = true;
     void noteTransfer(bool ok, const juce::String& what);
 
+    /*
+     * Show only what a CZ had.
+     *
+     * Reaper10's objection, and it is a fair one: somebody who came here for a
+     * CZ opens the window and finds a filter, a grain cloud, four lines and a
+     * rack of effects, none of which the hardware had, and has to work out
+     * which half of the panel is the instrument. His suggestion was to split
+     * the extra parts into a separate plugin. That would cost a player the
+     * ability to use both at once, and it would not help anyone who wants the
+     * extras, so this hides them instead.
+     *
+     * It is a view and not a mode: nothing about the sound changes, and
+     * anything hidden that is still doing something says so on screen rather
+     * than becoming invisible and inexplicable.
+     *
+     * Kept in the state tree rather than as a parameter because it is not
+     * something a host should automate, and a player who prefers the plain
+     * panel should still have it after reopening.
+     */
+    bool czOnly() const;
+    void setCzOnly(bool);
+
     /* Notes played on the computer keyboard. They join the same MIDI stream the
      * host sends, so there is one path into the synth rather than two. */
     juce::MidiMessageCollector uiNotes;

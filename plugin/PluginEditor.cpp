@@ -170,6 +170,7 @@ Editor::Editor(Processor& p)
     selectLine(0);
     selectEnv(1);
     refreshToggles();
+    applyView();
 
     /* The bank, grouped by family, because twenty eight names in one list is a
      * list and twenty eight names in eight groups is a bank. */
@@ -216,6 +217,18 @@ Editor::Editor(Processor& p)
         saveSyxBtn.onClick = [this] { chooseSysexToSave(); };
         addAndMakeVisible(loadSyxBtn);
         addAndMakeVisible(saveSyxBtn);
+
+        czBtn.setButtonText("CZ ONLY");
+        czBtn.setClickingTogglesState(true);
+        czBtn.setToggleState(proc.czOnly(), juce::dontSendNotification);
+        czBtn.setTooltip("Show only the controls a CZ had");
+        czBtn.onClick = [this] {
+            proc.setCzOnly(czBtn.getToggleState());
+            applyView();
+            resized();
+            repaint();
+        };
+        addAndMakeVisible(czBtn);
     }
 
     auto wheel = [&](juce::Slider& s, juce::Label& l, const char* name, juce::Colour c) {
@@ -469,13 +482,28 @@ void Editor::paint(juce::Graphics& g)
      */
     int fm = 0;
     if (auto* f = proc.apvts.getRawParameterValue("filt_mode")) fm = (int)f->load();
-    g.drawText(fm == 0
+    /*
+     * And it must not send anybody to a control this view has just hidden.
+     * The whole reason this line was reworded once already is that it sent
+     * somebody looking for a filter they could not find.
+     */
+    g.drawText(proc.czOnly()
+                   ? juce::String("showing only what a CZ had. "
+                                  "CZ ONLY, in the header, shows the rest.")
+               : fm == 0
                    ? juce::String("no filter engaged, as on a CZ. "
                                   "FILTER, in the left column, adds one.")
                    : juce::String(pd_filter_mode_name((pd_filter_mode_t)fm))
                          + " engaged, which a CZ never had",
                juce::Rectangle<int>(22, 58, getWidth() - 240, 16),
                juce::Justification::centredLeft, false);
+
+    juce::String hidden;
+    if (hiddenButActive(hidden)) {
+        g.setColour(juce::Colour(0xffd0b070));
+        g.drawText(hidden, juce::Rectangle<int>(22, 74, getWidth() - 44, 15),
+                   juce::Justification::centredLeft, true);
+    }
 
     if (proc.lastTransfer.isNotEmpty()) {
         const int losses = proc.lastLostCount + proc.lastDropped;
@@ -486,6 +514,70 @@ void Editor::paint(juce::Graphics& g)
                    juce::Rectangle<int>(getWidth() - 470, 58, 448, 16),
                    juce::Justification::centredRight, true);
     }
+}
+
+
+/*
+ * Everything a CZ never had, hidden together.
+ *
+ * The list is the honest one rather than a tidy one. A CZ-101 has two lines,
+ * eight step envelopes on pitch, waveform and level, ring modulation and noise
+ * modulation, a bend wheel and portamento. It has no filter, no aftertouch, no
+ * effects, no grain cloud and no third or fourth line. Those are the things
+ * that go.
+ */
+void Editor::applyView()
+{
+    const bool cz = proc.czOnly();
+
+    juce::Component* extras[] = {
+        &filterL, &filterBox, &cutoff, &cutoffL, &resonance, &resonanceL,
+        &filtEnv, &filtEnvL,
+        &grainBtn, &grainShapeL, &grainShapeBox,
+        &grainEdge, &grainEdgeL, &grainLen, &grainLenL,
+        &grainOverlap, &grainOverlapL, &grainOnset, &grainOnsetL,
+        &grainPitch, &grainPitchL,
+        &atWave, &atWaveL,
+        &fxL, &driveBox, &drvAmount, &drvAmountL,
+        &choMix, &choMixL, &choDepth, &choDepthL, &choRate, &choRateL,
+        &dlyMix, &dlyMixL, &dlyTime, &dlyTimeL, &dlyFb, &dlyFbL,
+    };
+    for (auto* comp : extras) comp->setVisible(!cz);
+
+    /* Lines 3 and 4 are two more of the same, and a CZ stacked two. */
+    for (int i = 2; i < PD_MAX_LINES; i++) lineBtn[i].setVisible(!cz);
+
+    if (cz && currentLine > 1) selectLine(0);
+}
+
+/*
+ * A control that is hidden and still doing something is worse than one that is
+ * visible and confusing, so the view says when that is the case instead of
+ * quietly swallowing it. This is the whole reason it is a view and not a mode:
+ * nothing is switched off, so something may well still be running.
+ */
+bool Editor::hiddenButActive(juce::String& what) const
+{
+    if (!proc.czOnly()) return false;
+
+    juce::StringArray on;
+    auto val = [this](const char* id) {
+        auto* v = proc.apvts.getRawParameterValue(id);
+        return v ? v->load() : 0.0f;
+    };
+
+    if (val("filt_mode") > 0.5f)  on.add("a filter");
+    if (val("cho_mix")   > 0.01f) on.add("chorus");
+    if (val("dly_mix")   > 0.01f) on.add("delay");
+    if (val("drv_mode")  > 0.5f)  on.add("drive");
+    if (val("at_wave")   > 0.01f || val("at_level") > 0.01f) on.add("aftertouch");
+    if (val("lines")     > 1.5f)  on.add("more than two lines");
+    for (int i = 0; i < PD_MAX_LINES; i++)
+        if (val(Ids::line(i, "grain_on").toRawUTF8()) > 0.5f) { on.add("grains"); break; }
+
+    if (on.isEmpty()) return false;
+    what = "hidden and still running: " + on.joinIntoString(", ");
+    return true;
 }
 
 void Editor::resized()
@@ -526,6 +618,8 @@ void Editor::resized()
         bar.removeFromLeft(4);
         /* the two bank arrows stay either side of the bank, and the file
          * buttons sit past them, so the row reads as one thing then another */
+        czBtn.setBounds(bar.removeFromRight(78));
+        bar.removeFromRight(8);
         saveSyxBtn.setBounds(bar.removeFromRight(72));
         bar.removeFromRight(4);
         loadSyxBtn.setBounds(bar.removeFromRight(72));
@@ -545,13 +639,14 @@ void Editor::resized()
     const int kLeftW = 268;
     auto leftArea = r.removeFromLeft(kLeftW);
     r.removeFromLeft(18);
-    const int naturalH = 26 + 5 + 26 + 12      /* the two line rows */
+    const bool cz = proc.czOnly();
+    const int naturalH = 26 + 5 + (cz ? 0 : 26) + 12   /* the line rows */
                        + 4 * 34 + 14           /* the waveform grid */
                        + 2 * 61 + 8 + 61       /* three knob rows */
                        + 8 + 61                /* what the wheels are worth */
-                       + 10 + 24 + 6 + 61      /* filter row and its knobs */
-                       + 12 + 28               /* the mix row */
-                       + 14 + 24 + 6 + 61 + 8 + 61;  /* granular */
+                       + (cz ? 0 : 10 + 24 + 6 + 61)   /* filter row and its knobs */
+                       + 12 + 28                       /* the mix row */
+                       + (cz ? 0 : 14 + 24 + 6 + 61 + 8 + 61);  /* granular */
     leftView.setBounds(leftArea);
     const bool scrolls = naturalH > leftArea.getHeight();
     leftHolder.setBounds(0, 0, kLeftW - (scrolls ? 10 : 0), juce::jmax(naturalH, leftArea.getHeight()));
@@ -564,9 +659,11 @@ void Editor::resized()
     for (int i = 0; i < 2; i++) { lineBtn[i].setBounds(row.removeFromLeft(62)); row.removeFromLeft(5); }
     row.removeFromLeft(4);
     lineCountBtn.setBounds(row);
-    left.removeFromTop(5);
-    auto row2 = left.removeFromTop(26);
-    for (int i = 2; i < 4; i++) { lineBtn[i].setBounds(row2.removeFromLeft(62)); row2.removeFromLeft(5); }
+    if (!cz) {
+        left.removeFromTop(5);
+        auto row2 = left.removeFromTop(26);
+        for (int i = 2; i < 4; i++) { lineBtn[i].setBounds(row2.removeFromLeft(62)); row2.removeFromLeft(5); }
+    }
     left.removeFromTop(12);
 
     for (int i = 0; i < PD_WAVE_COUNT; i++) {
@@ -593,8 +690,10 @@ void Editor::resized()
     left.removeFromTop(8);
     auto rowC = left.removeFromTop(knobRow);
     place(glide,     glideL,     rowC.removeFromLeft(89));
-    place(atWave,    atWaveL,    rowC.removeFromLeft(89));
-    place(filtEnv,   filtEnvL,   rowC);
+    if (!cz) {
+        place(atWave,  atWaveL,  rowC.removeFromLeft(89));
+        place(filtEnv, filtEnvL, rowC);
+    }
 
     /* What the two wheels are worth. They sit with the other per instrument
      * controls rather than crammed under the wheels themselves, where a knob
@@ -604,14 +703,16 @@ void Editor::resized()
     place(bendRange, bendRangeL, rowW.removeFromLeft(89));
     place(modDepth,  modDepthL,  rowW.removeFromLeft(89));
 
-    left.removeFromTop(10);
-    auto fRow = left.removeFromTop(24);
-    filterL.setBounds(fRow.removeFromLeft(48));
-    filterBox.setBounds(fRow);
-    left.removeFromTop(6);
-    auto rowD = left.removeFromTop(knobRow);
-    place(cutoff,    cutoffL,    rowD.removeFromLeft(89));
-    place(resonance, resonanceL, rowD.removeFromLeft(89));
+    if (!cz) {
+        left.removeFromTop(10);
+        auto fRow = left.removeFromTop(24);
+        filterL.setBounds(fRow.removeFromLeft(48));
+        filterBox.setBounds(fRow);
+        left.removeFromTop(6);
+        auto rowD = left.removeFromTop(knobRow);
+        place(cutoff,    cutoffL,    rowD.removeFromLeft(89));
+        place(resonance, resonanceL, rowD.removeFromLeft(89));
+    }
 
     left.removeFromTop(12);
     auto mixRow = left.removeFromTop(28);
@@ -623,21 +724,23 @@ void Editor::resized()
     /* Granular, at the foot of the line's own column, because it belongs to
      * the line rather than to the patch: one line can scatter while another
      * plays straight, and that is most of what it is for. */
-    left.removeFromTop(14);
-    auto gRow = left.removeFromTop(24);
-    grainBtn.setBounds(gRow.removeFromLeft(96));
-    gRow.removeFromLeft(8);
-    grainShapeL.setBounds(gRow.removeFromLeft(42));
-    grainShapeBox.setBounds(gRow);
-    left.removeFromTop(6);
-    auto gA = left.removeFromTop(knobRow);
-    place(grainLen,     grainLenL,     gA.removeFromLeft(89));
-    place(grainOverlap, grainOverlapL, gA.removeFromLeft(89));
-    place(grainEdge,    grainEdgeL,    gA);
-    left.removeFromTop(8);
-    auto gB = left.removeFromTop(knobRow);
-    place(grainOnset, grainOnsetL, gB.removeFromLeft(89));
-    place(grainPitch, grainPitchL, gB.removeFromLeft(89));
+    if (!cz) {
+        left.removeFromTop(14);
+        auto gRow = left.removeFromTop(24);
+        grainBtn.setBounds(gRow.removeFromLeft(96));
+        gRow.removeFromLeft(8);
+        grainShapeL.setBounds(gRow.removeFromLeft(42));
+        grainShapeBox.setBounds(gRow);
+        left.removeFromTop(6);
+        auto gA = left.removeFromTop(knobRow);
+        place(grainLen,     grainLenL,     gA.removeFromLeft(89));
+        place(grainOverlap, grainOverlapL, gA.removeFromLeft(89));
+        place(grainEdge,    grainEdgeL,    gA);
+        left.removeFromTop(8);
+        auto gB = left.removeFromTop(knobRow);
+        place(grainOnset, grainOnsetL, gB.removeFromLeft(89));
+        place(grainPitch, grainPitchL, gB.removeFromLeft(89));
+    }
 
     // middle: the envelope
     auto envRow = r.removeFromTop(28);
@@ -650,7 +753,7 @@ void Editor::resized()
 
     // right: what it is doing
     /* the effects live under the meters, across the right column */
-    {
+    if (!cz) {
         /* the effects give up their second row before the meters do */
         const int fxH = juce::jlimit(78, 168, right.getHeight() / 3);
         auto fxArea = right.removeFromBottom(fxH);

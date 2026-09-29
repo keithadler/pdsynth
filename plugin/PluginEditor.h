@@ -71,6 +71,14 @@ private:
     void chooseSysexToLoad();
     void chooseSysexToSave();
     void showReport(const juce::String& title, const juce::String& body);
+    /*
+     * Show only what the hardware had. See Processor::czOnly for why this is a
+     * view rather than a mode, and why it is not a plugin parameter.
+     */
+    juce::TextButton czBtn;
+    void applyView();
+    bool hiddenButActive(juce::String& what) const;
+
     juce::TextButton lineBtn[PD_MAX_LINES];
     juce::TextButton lineCountBtn;      /* how many lines are running */
     juce::ComboBox   filterBox, driveBox;

@@ -54,12 +54,17 @@ int main(int argc, char** argv)
     /* A fifth argument loads a .syx first, so the librarian's status line can
      * actually be looked at. Everything else about that line is reachable only
      * through a file dialog, which a headless run has no way to drive. */
-    if (argc > 5) {
+    if (argc > 5 && juce::String(argv[5]) != "--cz") {
         juce::String rep;
         const bool ok = proc.loadSysex(juce::File(juce::String(argv[5])), rep);
         std::fprintf(stderr, "loadSysex: %s\n%s\n", ok ? "ok" : "failed",
                      proc.lastTransfer.toRawUTF8());
     }
+
+    /* --cz anywhere on the line renders the hardware-only view, which is
+     * otherwise reachable only by clicking a button in a window. */
+    for (int i = 1; i < argc; i++)
+        if (juce::String(argv[i]) == "--cz") proc.setCzOnly(true);
 
     std::unique_ptr<juce::AudioProcessorEditor> ed(proc.createEditor());
     ed->setSize(w, h);
