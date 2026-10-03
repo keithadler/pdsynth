@@ -1,0 +1,59 @@
+pdsynth factory bank, 27 voices in 2 files
+Each file is one CZ internal memory area: send it and it fills
+Internal 1 to 16. MIDI channel 1.
+
+A CZ has no velocity, no stereo field and no mod wheel, so every
+voice plays more plainly on the hardware than it does in pdsynth.
+That is true of all of them and is not repeated below.
+"Approximate" means something that changes the voice itself is
+missing from the CZ's side of it.
+
+pdsynth-factory-1of2.syx
+  Internal  1  Glass Tine       (approximate on a real CZ)
+                  - Semitone offset
+  Internal  2  Harpsi           
+  Internal  3  Synth Clav       
+  Internal  4  Fretless         
+  Internal  5  Rubber Bass      
+  Internal  6  Digi Strings     
+  Internal  7  Pizzicato        
+  Internal  8  Brass Stab       
+  Internal  9  Brass Swell      
+  Internal 10  Air Flute        
+  Internal 11  Reed Pipe        
+  Internal 12  Sweep Lead       
+  Internal 13  Formant Sweep    (approximate on a real CZ)
+                  - Waveform
+  Internal 14  Bell Pad         (approximate on a real CZ)
+                  - Waveform
+  Internal 15  Tubular          (approximate on a real CZ)
+                  - Semitone offset
+  Internal 16  Marimba          
+
+pdsynth-factory-2of2.syx
+  Internal  1  Steel Drum       (approximate on a real CZ)
+                  - Semitone offset
+  Internal  2  Vibe Bar         
+  Internal  3  Choir Ah         
+  Internal  4  Waterphone       (approximate on a real CZ)
+                  - Semitone offset
+  Internal  5  Drawbar          
+  Internal  6  Grain Pad        (approximate on a real CZ)
+                  - Granular
+                  - Detune
+  Internal  7  Grain Shimmer    (approximate on a real CZ)
+                  - Granular
+  Internal  8  Grain Dust       (approximate on a real CZ)
+                  - Granular
+  Internal  9  Hurdy Gurdy      (approximate on a real CZ)
+                  - Lines 3 and 4
+                  - Granular
+                  - Detune
+  Internal 10  Vowel Choir      (approximate on a real CZ)
+                  - Lines 3 and 4
+                  - Filter
+  Internal 11  Glass Harmonica  (approximate on a real CZ)
+                  - Lines 3 and 4
+                  - Granular
+
+12 of 27 voices lean on something that changes the voice itself.

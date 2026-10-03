@@ -31,6 +31,20 @@ jobs:
         shell: bash
         run: ctest --test-dir build -C Release --output-on-failure
 
+      # banks/ is what somebody downloads when they cannot build anything, so it
+      # has to be what the exporter writes today and not what it wrote once.
+      - name: The committed banks match the exporter
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          out=$(mktemp -d)
+          bin=$(find build -name pd_exportbank -type f | head -1)
+          "$bin" "$out"
+          diff -r banks "$out" || {
+            echo "banks/ does not match what pd_exportbank writes now"
+            exit 1
+          }
+
       # The bank is generated. If the generator and the generated file have
       # drifted apart, the file in the tree is not the one anyone can reproduce.
       - name: The generated bank matches its generator

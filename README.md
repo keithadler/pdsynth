@@ -195,6 +195,9 @@ files. Put them on a flash drive beside your CZ banks and send them with any
 MIDI utility. A third file, `pdsynth-factory-slots.txt`, says which voice lands
 in which slot.
 
+**You do not need to build anything to use it.** The exported files are in
+[`banks/`](banks/) and CI checks they are exactly what the tool writes today.
+
 **Not every preset survives the trip, and it says which.** A CZ has two lines,
 no filter, no grain cloud and no effects. A preset that leans on those arrives
 as the part of it a CZ can hold, and the slot list marks it "approximate on a
