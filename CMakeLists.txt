@@ -56,6 +56,14 @@ add_executable(pd_character tools/pd_character.c)
 target_link_libraries(pd_character PRIVATE pdcore)
 add_test(NAME character COMMAND pd_character)
 
+# Writes the factory bank as Casio voice dumps and reads every one back before
+# it is allowed to exist. The test is the tool succeeding, so a bank that stops
+# surviving its own round trip fails the build rather than a flash drive.
+add_executable(pd_exportbank tools/pd_exportbank.c)
+target_link_libraries(pd_exportbank PRIVATE pdcore)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/export_test)
+add_test(NAME export_bank COMMAND pd_exportbank ${CMAKE_BINARY_DIR}/export_test)
+
 enable_testing()
 foreach(t osc env voice extras cv fx sysex grain)
   add_executable(test_${t} tests/test_${t}.c)

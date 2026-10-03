@@ -34,7 +34,10 @@ static void ok(int cond, const char *fmt, ...)
  * every window in this file look at the wrong part of the note, or off the end
  * of the buffer entirely. */
 #define IR (SR * PD_OVERSAMPLE)
-#define N  ((int)(IR * 1.2))
+/* an integer constant expression: (int)(IR * 1.2) is a double cast to int,
+ * which sizes the arrays below as variable length ones the compiler warns about.
+ * 48000 divides by 5, so this is exactly 1.2 seconds at the inner rate. */
+#define N  (48000 * PD_OVERSAMPLE * 6 / 5)
 static double bufL[N], bufR[N];
 
 static int play(pd_patch_t *p, int note, double vel, double sec, int note2, double at2)

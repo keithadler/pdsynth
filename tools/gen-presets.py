@@ -403,6 +403,48 @@ PRESETS = [
    velw=.3, velv=.45, modw=.4, gain=0.56, spread=0.7,
    filt='bandpass', cutoff=780.0, res=0.72, filt_env=0.0, filt_key=0.0,
    fx=Fx(chorus=0.46, cho_depth=5.0, cho_rate=0.21, delay=0.18, dly_time=0.38, dly_fb=0.22)),
+
+ # ---------------------------------------------------------------------------
+ # The glass harmonica: wet fingers rubbing the rims of tuned glass bowls.
+ #
+ # Asked for by Reaper10, with the grain scatter in mind.
+ #
+ # What makes it itself is how little is in it. A rubbed bowl is close to a
+ # pure tone, which is why it sounds so cold: the harmonics a bowed string
+ # would carry are mostly not there. What is there is a few partials that are
+ # not harmonics at all (a bowl is a shell, not a string, so its second mode
+ # sits near 2.3 times the fundamental rather than at 2), and a rub that takes
+ # a long time to start because the glass has to be coaxed into singing.
+ #
+ # Line 1 and 2 are two bowls rubbed a few cents apart, nearly unbent sines, so
+ # they beat slowly against each other. Line 3 is the shell's second mode, a
+ # fraction of the level and well off the harmonic series. Line 4 is the
+ # grain cloud: soft Gaussian grains an octave up with a little scatter, which
+ # is the faint unsteadiness of a finger slipping and catching on the rim, and
+ # it is the part a sine cannot do.
+ # ---------------------------------------------------------------------------
+ Preset("Glass Harmonica", "Glass", [
+   # Two bowls, and they are deliberately not equal. Two equal sines a few cents
+   # apart cancel completely at every beat, which measured 17 dB of level swing
+   # and sounds like a tremolo pedal, not glass. A real pair rubbed together
+   # shimmer, which is a swing of a few dB: so the second is about a third of
+   # the first, which gives roughly six.
+   L('dsine', .50, -3, wenv=env([20,16,22],[3,2,0],1,2), aenv=env([34,17,23],[99,96,0],1,2)),
+   L('dsine', .17, +4, wenv=env([19,15,21],[3,2,0],1,2), aenv=env([33,16,22],[99,94,0],1,2)),
+   # the bowl's second mode, 14.6 semitones up: an octave and 2.6 semitones
+   L('dsine', .06, -40, octave=1, semis=3, wenv=env([22,18,24],[2,2,0],1,2), aenv=env([30,22,26],[96,84,0],1,2)),
+   # The cloud has to be loud enough to hear or it is not scatter, it is a
+   # slightly smaller sine. The first version used 70 ms grains at an overlap
+   # of five, which sum to an almost flat envelope: the sidebands came out 46 dB
+   # below the halo, which is nothing. Fewer, longer grains with real jitter
+   # leave gaps and swells, which is the finger catching on the rim.
+   L('dsine', .15, 0, octave=1, wenv=env([24,20,24],[3,2,0],1,2), aenv=env([32,20,24],[99,90,0],1,2),
+     grain=G(on=1, shape='gaussian', edge=0.5, length_ms=95.0, overlap=1.8, onset=0.85, pitch=0.09))],
+   # The four lines sum to 0.88 at full level on purpose: any more and two bowls
+   # beating in phase clip, which flattens the velocity response to exactly 1.00x
+   # (found the same way on Vowel Choir) and turns a pure tone into a harsh one.
+   velw=.15, velv=.4, modw=.3, gain=0.85, spread=0.75,
+   fx=Fx(chorus=0.18, cho_depth=2.6, cho_rate=0.17, delay=0.24, dly_time=0.46, dly_fb=0.30, dly_tone=0.38)),
 ]
 
 HEADER = '''/*

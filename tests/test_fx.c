@@ -29,7 +29,7 @@ static void ok(int cond, const char *fmt, ...)
 }
 
 #define SR 48000.0
-#define N  (int)(SR * 3)
+#define N  (48000 * 3)   /* an integer constant, so the arrays below are not VLAs */
 static double outL[N], outR[N];
 
 /* a steady tone through the effect, so what comes out can be compared with it */

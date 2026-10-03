@@ -115,7 +115,7 @@ one save at a time.
 ctest --test-dir build
 ```
 
-Twelve suites. The oscillator is judged by its spectrum, because that is the only
+Thirteen suites. The oscillator is judged by its spectrum, because that is the only
 thing about an oscillator a listener can hear. The envelope is judged by where
 it is at a given moment, because one that reaches the right levels at the wrong
 time is a different instrument. The voice is judged on pitch, detuning,
@@ -182,6 +182,33 @@ And the honest one: none of the librarian has ever touched a real CZ. It is
 verified against twenty real patch files, which is not the same as a machine.
 If you own a CZ, or the recent hardware reissue, a dump out of it and a write
 back into it would be worth more than everything above.
+
+## Taking the factory bank with you
+
+```
+pd_exportbank <directory> [midi channel]
+```
+
+Writes the factory presets as Casio voice dumps, one CZ memory area per file:
+sixteen voices, program 0x20 to 0x2F, the internal sounds. 27 presets is two
+files. Put them on a flash drive beside your CZ banks and send them with any
+MIDI utility. A third file, `pdsynth-factory-slots.txt`, says which voice lands
+in which slot.
+
+**Not every preset survives the trip, and it says which.** A CZ has two lines,
+no filter, no grain cloud and no effects. A preset that leans on those arrives
+as the part of it a CZ can hold, and the slot list marks it "approximate on a
+real CZ" and names what is missing. A CZ also has no velocity, no stereo field
+and no mod wheel, so every voice plays more plainly on the hardware; that is
+said once at the top rather than on every line, which is what stopped the first
+version marking all 26 voices approximate.
+
+Nothing is written before it has been read back. The tool parses its own output
+with the same code a player's dumps go through, checks every program number
+against the memory map as an absolute value, and requires that writing what was
+read back gives the same bytes. A file that fails any of it is removed, because
+a half-trusted bank on a flash drive is worse than none. It runs as a test, so a
+bank that stops surviving its own round trip fails the build.
 
 ## CZ ONLY
 

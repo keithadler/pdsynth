@@ -41,7 +41,10 @@
 #define M_PI 3.14159265358979323846
 #endif
 #define SR 48000.0
-#define N  (int)(SR * 3)
+/* An integer constant rather than (int)(SR * 3): a double expression cast to
+ * int is not an integer constant expression, so sizing an array with it is a
+ * variable length array that the compiler folds back and warns about. */
+#define N  (48000 * 3)
 static double buf[N];
 static int    used;
 
@@ -127,6 +130,19 @@ static double mag_at(double hz, double from, double win)
  * the filter off, and 0.01 with key tracking turned up, which moves the
  * resonance away with the pitch.
  */
+/* The loudest bin in a band, which is what a partial that is meant to be there
+ * looks like. Searched on a 0.4 percent grid so a partial that is a few cents
+ * off where it was expected is still found. */
+static double band_peak(double lo, double hi, double from, double win)
+{
+    double best = 0;
+    for (double hz = lo; hz < hi; hz *= 1.004) {
+        const double m = mag_at(hz, from, win);
+        if (m > best) best = m;
+    }
+    return best;
+}
+
 static double band_share(double f, double lo, double hi)
 {
     double in = 0, all = 0;
@@ -286,6 +302,71 @@ int main(void)
         } else if (!strcmp(f, "Bell")) {
             want(at1 > 0.20, n, "a bell rings on", at1, 0.20, 9.9);
             want(b_on > 3.0, n, "and is rich at the strike", b_on, 3.0, 99.0);
+        } else if (!strcmp(f, "Glass")) {
+            /*
+             * A glass harmonica is wet fingers rubbing tuned bowls, and each
+             * thing that makes it that is something a synthesizer gets wrong
+             * by doing too much.
+             *
+             * The rub takes a long time to start, because glass has to be
+             * coaxed into singing. It is close to a pure tone, so almost
+             * nothing sits above the third harmonic. A bowl is a shell and not
+             * a string, so its second mode lands near 2.3 times the fundamental
+             * rather than at 2. Two bowls a few cents apart shimmer. And a
+             * finger slipping on a rim is irregular, which is the grain cloud.
+             *
+             * Every threshold below is read off the preset and its
+             * counterexamples, listed beside each, not chosen to be passed.
+             */
+            play(&pr->patch, 60, 0.95, 2.8);
+
+            const double fund  = band_peak(f0 * 0.97, f0 * 1.03, 1.0, 0.5);
+            want(fund > 1e-4, n, "it has to be sounding to be measured", fund, 1e-4, 9.9);
+
+            /* slow rub: instant attack reads 1.0 here, as built reads far lower */
+            const double r_early = rms_at(0.15, 0.05);
+            const double r_late  = rms_at(1.20, 0.10);
+            const double rise = r_late > 1e-6 ? r_early / r_late : 99.0;
+            want(rise < 0.5, n, "glass takes a while to start singing (level at 150 ms over level at 1.2 s)",
+                 rise, 0.0, 0.5);
+
+            /* nearly pure: as built 0.001, bent hard 0.027, saw bent hard 0.041 */
+            double up = 0;
+            for (int k = 4; k <= 12; k++) {
+                const double m = band_peak(k * f0 * 0.985, k * f0 * 1.015, 1.0, 0.5);
+                up += m * m;
+            }
+            const double upper = fund > 1e-6 ? sqrt(up) / fund : 99.0;
+            want(upper < 0.010, n, "almost nothing above the third harmonic (4th to 12th over the fundamental)",
+                 upper, 0.0, 0.010);
+
+            /* the shell's second mode, off the harmonic series: as built 0.100,
+             * absent 0.000, put on the octave 0.000 */
+            const double mode = band_peak(f0 * 2.30, f0 * 2.42, 1.0, 0.5);
+            const double mode_r = fund > 1e-6 ? mode / fund : 0.0;
+            want(mode_r > 0.05, n, "a bowl's second mode sits near 2.3x, not on the octave (over the fundamental)",
+                 mode_r, 0.05, 9.9);
+
+            /* two bowls shimmer, they do not pulse: one bowl 0.7 dB, as built
+             * 5.6, two equal bowls 19 */
+            double lo = 9e9, hi = 0;
+            for (double t = 0.9; t < 2.6; t += 0.05) {
+                const double r = rms_at(t, 0.05);
+                if (r > hi) hi = r;
+                if (r < lo && r > 1e-7) lo = r;
+            }
+            const double wob = lo > 0 ? 20.0 * log10(hi / lo) : 0.0;
+            want(wob > 1.5, n, "two bowls a few cents apart should shimmer (dB)", wob, 1.5, 10.0);
+            want(wob < 10.0, n, "but not pulse like a tremolo pedal (dB)", wob, 1.5, 10.0);
+
+            /* the cloud has to be audible: energy just below the octave halo
+             * where nothing else is. As built 0.030, grains off 0.000 */
+            const double halo = band_peak(f0 * 2.0 * 0.99, f0 * 2.0 * 1.01, 1.0, 0.5);
+            const double side = band_peak(f0 * 2.0 - 130.0, f0 * 2.0 - 20.0, 1.0, 0.5);
+            const double sr = halo > 1e-6 ? side / halo : 0.0;
+            want(sr > 0.010, n, "the grain cloud has to be audible beside the halo (sideband over halo)",
+                 sr, 0.010, 9.9);
+
         } else if (!strcmp(f, "Voice")) {
             /*
              * What makes a vowel a vowel is a formant, and what makes it a
