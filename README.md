@@ -1,246 +1,114 @@
 # pdsynth
 
-Casio CZ phase distortion, in software. CLAP, VST3, AU, LV2 and standalone.
+**Casio CZ phase distortion, in software, plus a few things the hardware never could.**
+A free synthesizer for macOS, Windows and Linux. VST3, CLAP, AU, LV2 and standalone.
 
-<img src="docs/editor.png" width="920" alt="the pdsynth editor">
+[![build](https://github.com/keithadler/pdsynth/actions/workflows/build.yml/badge.svg)](https://github.com/keithadler/pdsynth/actions/workflows/build.yml)
+[![license](https://img.shields.io/badge/license-GPL--2.0--or--later-blue)](COPYING)
 
-Phase distortion is not FM and it is not subtractive, though it was sold in
-1984 against machines that were both. A CZ reads one sine table and bends the
-phase on the way in. The phase of a plain oscillator climbs from 0 to 1 at a
-constant rate; bend that climb so it rushes through part of the cycle and
-crawls through the rest, and the sine that comes out has harmonics. How far it
-is bent is a single number, and on the hardware that number comes from an eight
-step envelope, which is why a CZ sweeps the way it does while owning no filter
-at all.
+<img src="docs/editor.png" width="920" alt="The pdsynth editor: eight step envelope in the middle, the live phase bend beside the waveform it makes, effects at the bottom right">
 
-That is why the eight step envelope is the middle of the window rather than
-something behind a menu, and why the phase bend is drawn live beside the
-waveform it produces. It is a technique nobody believes from a description.
+### [Download the latest release](https://github.com/keithadler/pdsynth/releases/latest)
 
-## Building
+Free, GPL, no account, nothing phones home. 27 sounds built in, and it reads and
+writes real Casio CZ patch files.
 
-```
-cmake -B build && cmake --build build
-```
+---
 
-Fetches JUCE 8 and clap-juce-extensions and produces the standalone, the CLAP,
-the VST3, the AU on macOS and the LV2. The synthesis is plain C and has no
-dependencies at all: `-DPDSYNTH_BUILD_PLUGIN=OFF` builds the engine, the tests
-and the headless renderer on their own.
+## Get playing in a minute
 
-## Playing it
+1. **[Download](https://github.com/keithadler/pdsynth/releases/latest)** the file for your system.
+2. **Just want to try it?** Open the standalone app. Press `z` to `m` and `q` to `i` on your
+   computer keyboard to play. Pick a sound from the box at the top. Arrow keys shift the
+   octave, space stops everything.
+3. **Using it in a DAW?** Copy the plugin for your host into its folder, rescan, and load it.
 
-The standalone publishes a MIDI port called **pdsynth**, so a DAW, a keyboard
-or a script can reach it without opening a settings dialog. The computer keys
-play two octaves, `z` to `m` and `q` to `i`, with the arrows shifting octave and
-space for panic. Bend and mod wheels sit at the left of the keyboard; bend
-springs back to center when released, as a real one does.
+| | VST3 | CLAP | AU | LV2 |
+|---|---|---|---|---|
+| **macOS** | `~/Library/Audio/Plug-Ins/VST3` | `~/Library/Audio/Plug-Ins/CLAP` | `~/Library/Audio/Plug-Ins/Components` | |
+| **Windows** | `C:\Program Files\Common Files\VST3` | `C:\Program Files\Common Files\CLAP` | | |
+| **Linux** | `~/.vst3` | `~/.clap` | | `~/.lv2` |
 
-## What is in it
+The standalone also publishes a MIDI port called **pdsynth**, so a keyboard, a DAW or a
+script can play it without a settings dialog.
 
-**Eight waveforms**, the set a CZ-101 lists on its panel.
+> **macOS:** these builds are not signed or notarized. If macOS says it cannot verify an app
+> or plugin, run `xattr -dr com.apple.quarantine <the file>` once, or right-click it and choose Open.
+
+---
+
+## The sounds
+
+Twenty-seven presets, all original designs. Each is checked against how the real
+instrument behaves, not just against "sounds fine": a marimba has to ring and then stop, brass
+has to brighten after the note starts, a hurdy-gurdy has to rattle.
 
 | | |
 |---|---|
-| saw, square, pulse, double sine, saw pulse | a bent phase, one sine table |
-| reso saw, reso triangle, reso trapezoid | a sine at a multiple of the note, under a falling window |
+| **Keys** | Glass Tine (a glass electric piano), Harpsi, Synth Clav |
+| **Bass** | Rubber Bass, Fretless |
+| **Strings and brass** | Digi Strings, Pizzicato, Brass Stab, Brass Swell |
+| **Wind and lead** | Air Flute, Reed Pipe, Sweep Lead, Formant Sweep |
+| **Bells and mallets** | Bell Pad, Tubular, Marimba, Steel Drum, Vibe Bar |
+| **Voices** | Choir Ah (a pad), **Vowel Choir** (a real, fixed vowel) |
+| **Odd and wonderful** | **Waterphone**, **Hurdy Gurdy**, **Glass Harmonica**, Drawbar |
+| **Granular** | Grain Pad, Grain Shimmer, Grain Dust |
 
-Each is checked by its spectrum rather than by eye. Every one collapses to a
-clean sine when the DCW is at zero, which is what the hardware does; the
-sawtooth carries a falling harmonic series; the square carries odd harmonics
-and no even ones; and the resonant three sweep a formant from the third
-harmonic to the thirteenth while the pitch stays where it is.
+A few are worth hearing first:
 
-**Eight step envelopes**, three per line, on pitch, waveform and level. Each
-step is a rate and a level, with one marked as the sustain and one as the end.
-This is not an ADSR with extra stages: it can do an ADSR, and it can also do a
-double attack, a swell that pauses, or a decay that stops halfway down and
-starts again. The envelope on the waveform is why no filter is needed.
+- **Hurdy Gurdy** is three instruments in one: a bowed melody string, a drone an octave
+  under, and the chien, the loose bridge that rattles. A rattle has no pitch, so a phase
+  distortion oscillator cannot make one. A grain cloud can.
+- **Vowel Choir** sings an actual vowel. A vowel is a resonance that stays put while the note
+  moves, and a keyboard-tracking filter turns it into a wah. This one holds still.
+- **Glass Harmonica** is two bowls rubbed a few cents apart with a quiet second mode that sits
+  off the harmonic series, the way a real glass shell's does.
+- **Waterphone** has partials that are not harmonics at all, which nothing a bent sine does
+  on its own can fake.
 
-**Up to four lines per voice**, each an oscillator under its own three
-envelopes, detunable against each other and placed across the stereo field. The
-hardware stacked two; the limit there was the cost of the chips, and four is the
-same code run twice more. They are independent rather than paired, because a
-pair is four lines with two of the detunes set the same and the reverse is not
-true.
+---
 
-**Glide, aftertouch, and a multimode filter**, none of which the hardware had.
-The filter is a state variable design giving low pass, high pass, band pass and
-notch, and its cutoff can follow the first line's waveform envelope, so a filter
-sweep and a phase bend can move together. It is off unless a patch asks for it
-and no preset uses it: the argument that a CZ does not need a filter is sound,
-and this does not weaken it. It is here because a bend can only ever add
-harmonics, and there is no other way to notch something out or make a band pass
-honk.
+## What phase distortion is
 
-**Ring and noise modulation.** The originals had both; the 2026 hardware
-reissue has neither. Noise here shakes how far the phase is bent rather than
-how loud the line is: shaking the amplitude is ring modulation with a noise
-source, and at full depth it removes most of the note.
+A CZ reads one sine table and bends the phase on the way in. The phase of a plain oscillator
+climbs from 0 to 1 at a constant rate. Bend that climb so it rushes through part of the cycle
+and crawls through the rest, and the sine that comes out has harmonics. How far it is bent is
+a single number, and on the hardware that number comes from an eight step envelope. That is
+why a CZ sweeps the way it does while owning no filter at all.
 
-**Chorus, delay and drive.** The hardware reissue has a chorus, and a synth
-that arrives completely dry sounds thinner than the box standing next to it,
-whatever its oscillators are doing. The chorus is three taps of the same slow
-cycle with the sides moved apart; the delay's repeats darken as they go,
-because a repeat that keeps all its top end stops sounding like distance and
-starts sounding like a second instrument; and the drive offers a soft knee, a
-hard clip and a fold. All written here rather than borrowed: a chorus is a
-delay that wobbles and the suites worth reading for approach are GPL, which
-would follow the code home.
+It is not FM and it is not subtractive, though it was sold in 1984 against machines that
+were both. It is a technique nobody believes from a description, so the eight step envelope
+is the middle of the window and the phase bend is drawn live beside the waveform it makes.
 
-**Twenty presets**, original designs built from published technique. No
-parameter list is copied from anyone and Casio's ROM data is not here.
+## What is in it
 
-**A librarian.** It reads and writes Casio CZ voice dumps, the CZ-101/1000/5000
-shape that every CZ can read, so patches made on the hardware open here and
-patches made here can be sent back. Two buttons beside the bank.
+**Eight waveforms**, the set a CZ-101 lists on its panel. Five are one sine table under a
+different bend. The resonant three are a sine at a multiple of the note under a falling
+window, which sweeps a formant while the pitch stays where it is.
 
-The rule it follows is that a translation never fails silently. pdsynth has
-four lines where a CZ has two, a filter the hardware never had, and it hears
-velocity and pressure that a CZ-101 cannot. So every load and every save comes
-back with a written account of what could not make the trip, naming the control
-each time and saying what will happen on the machine. It does not refuse and it
-does not quietly round.
+**Eight step envelopes**, three per line, on pitch, waveform and level. Each step is a rate
+and a level, with one marked as sustain and one as the end. It can do an ADSR, and it can
+also do a double attack, a swell that pauses, or a decay that stops halfway down and starts
+again.
 
-It also keeps what it does not understand. A voice loaded and saved again is
-byte for byte the file that arrived, including the vibrato section, the key
-follow, the CZ's pairing of two waveforms on a line, and the per step falling
-bit, which real dumps show is stored rather than worked out from the levels. A
-librarian that rewrites bytes it does not model corrupts a collection quietly,
-one save at a time.
+**Up to four lines per voice**, each its own oscillator under its own three envelopes,
+detunable against each other and spread across the stereo field. The hardware stacked two.
 
-## Testing
+**Ring and noise modulation**, which the originals had and the 2026 reissue dropped.
 
-```
-ctest --test-dir build
-```
+**Chorus, delay and drive.** The delay's repeats darken as they go, because a repeat that
+keeps all its top end stops sounding like distance. Drive offers a soft knee, a hard clip
+and a fold.
 
-Thirteen suites. The oscillator is judged by its spectrum, because that is the only
-thing about an oscillator a listener can hear. The envelope is judged by where
-it is at a given moment, because one that reaches the right levels at the wrong
-time is a different instrument. The voice is judged on pitch, detuning,
-velocity, and on whether the waveform envelope does the work a filter would do
-elsewhere.
+**A filter, glide and aftertouch**, none of which a CZ had. The filter is a state variable
+design (low, high, band pass, notch) and it is off unless a patch asks for it.
 
-The last two suites judge the bank. One asks whether a preset is broken: does
-it sound, does it answer the hand, does it sit at the level of its neighbours.
-The other asks the harder question, whether a preset behaves like the thing it
-is named after, because a marimba that sustains for four seconds is not a
-marimba however clean it measures. Those targets come from how the instruments
-work rather than from taste: a struck bar rings and then stops and dulls as it
-goes, brass brightens after the note starts rather than before, an organ is a
-switch and not a shape. It found eleven real faults the first time it ran.
+### Things a CZ could not do
 
-The librarian is checked twice over, because there are two ways for it to be
-wrong. `pd_sysexcheck` takes real CZ dumps through the C translator and reports
-how much of each one survived, by section. `pd_syxplugcheck` takes the same
-dumps out to the plugin's parameters and back, which is the trip a player's
-patch actually makes and which the C tests cannot see: parameters are floats
-with ranges, and a rate of 73 coming back as 72 would quietly alter every patch
-anybody saved. That second check is why the detune, the end step and the sign
-of a zero detune were fixed. Both run on every push.
-
-The grain cloud cannot be judged that way at all. Scattering a tone into
-windowed fragments smears its spectrum on purpose, so the off harmonic energy
-that condemns the oscillator is the effect working. `test_grain` asks a
-player's questions instead: is it still the note, does it stay that note when
-the spread opens, does the level hold when the density changes, does it click,
-does the window do anything, and does switching it off leave the synth exactly
-as it was. `pd_grainplugcheck` then does the same trip the librarian gets, out
-to the plugin's parameters and back, because a switch written to the parameters
-and never read back would leave every engine test passing and the control dead.
-
-The suites are also checked by breaking the code on purpose and seeing whether
-they notice. That is how the sysex tests grew: six deliberate faults went
-straight through the first run, all of them changes applied to both the encoder
-and the decoder, which a round trip cannot see by construction. The grain tests
-were built the same way and thirteen faults were put through them, including
-restoring the uncentered detune from the code they came from, hardcoding the
-grain length, and making the pitch spread do nothing. The last two passed at
-first: both tests only asked whether the cloud stayed centered, which is
-something a control that does nothing passes perfectly.
-
-```
-tools/same-sound.sh v0.3.0
-```
-
-Answers a question the suites cannot: did this change move a single sample.
-Every threshold in every suite is above some size, and a drift of one part in
-ten million through the oscillator passes all twelve of them, which was
-measured rather than assumed. This renders the demo at an earlier commit and at
-the working tree and compares the bytes. It compares the machine against
-itself, never against a stored hash, because different compilers round
-differently and that is not a regression. All of the granular work above leaves
-it identical, which is what "off is off" has to mean.
-
-## Still to come
-
-CV and gate are in and checked on every push, but the last mile needs a DC
-coupled interface before the voltages mean anything outside a test.
-
-And the honest one: none of the librarian has ever touched a real CZ. It is
-verified against twenty real patch files, which is not the same as a machine.
-If you own a CZ, or the recent hardware reissue, a dump out of it and a write
-back into it would be worth more than everything above.
-
-## Taking the factory bank with you
-
-```
-pd_exportbank <directory> [midi channel]
-```
-
-Writes the factory presets as Casio voice dumps, one CZ memory area per file:
-sixteen voices, program 0x20 to 0x2F, the internal sounds. 27 presets is two
-files. Put them on a flash drive beside your CZ banks and send them with any
-MIDI utility. A third file, `pdsynth-factory-slots.txt`, says which voice lands
-in which slot.
-
-**You do not need to build anything to use it.** The exported files are in
-[`banks/`](banks/) and CI checks they are exactly what the tool writes today.
-
-**Not every preset survives the trip, and it says which.** A CZ has two lines,
-no filter, no grain cloud and no effects. A preset that leans on those arrives
-as the part of it a CZ can hold, and the slot list marks it "approximate on a
-real CZ" and names what is missing. A CZ also has no velocity, no stereo field
-and no mod wheel, so every voice plays more plainly on the hardware; that is
-said once at the top rather than on every line, which is what stopped the first
-version marking all 26 voices approximate.
-
-Nothing is written before it has been read back. The tool parses its own output
-with the same code a player's dumps go through, checks every program number
-against the memory map as an absolute value, and requires that writing what was
-read back gives the same bytes. A file that fails any of it is removed, because
-a half-trusted bank on a flash drive is worse than none. It runs as a test, so a
-bank that stops surviving its own round trip fails the build.
-
-## CZ ONLY
-
-A CZ-101 is two lines, three eight step envelopes each, ring and noise
-modulation, a bend wheel and portamento. pdsynth adds a filter, a grain cloud,
-two more lines, aftertouch and a rack of effects, and somebody who came here for
-a CZ has to work out which half of the panel is the instrument.
-
-**CZ ONLY**, in the header, hides everything the hardware never had.
-
-It is a view and not a mode. Nothing is switched off and no sound changes, so
-anything hidden that is still running says so on screen rather than becoming
-invisible and inexplicable: load a preset with chorus on, switch the view, and
-the line under the header reads *hidden and still running: chorus*. The
-preference travels in the saved session.
-
-This is Reaper10's objection and his suggestion was to split the extra parts
-into a separate plugin. That would cost anyone who wants both, and it would not
-help anyone who wants the extras, so the panel hides them instead.
-
-## Granular
-
-Two lines of phase distortion is a CZ. Twenty overlapping grains of it is not,
-and could never have been: the hardware had one phase accumulator per line.
-
-Any line can be switched to a grain cloud instead of a plain oscillator. The
-grains are cut from the same phase distorted sine the rest of the synth makes,
-at the same bend, so a cloud still opens as it is played and still follows its
-DCW envelope. That is the part a sampler's granular cannot do.
+**Granular.** Any line can be a grain cloud instead of a plain oscillator. The grains are cut
+from the same phase distorted sine the rest of the synth makes, at the same bend, so a cloud
+still opens as you play harder and still follows its waveform envelope. Each line has its own
+cloud.
 
 | | |
 |---|---|
@@ -250,43 +118,119 @@ DCW envelope. That is the part a sampler's granular cannot do.
 | **SCATTER** | jitter in when grains start |
 | **DETUNE** | how far apart their pitches are pulled |
 
-Length and overlap are the two that matter, and they are one control between
-them: the grain train repeats at overlap divided by length, and that rate is
-audible as a pair of sidebands either side of the note. Long grains deep in
-overlap put those sidebands close in and quiet, which is a texture. Short
-grains at an overlap below one put them far out and loud, and the note stops
-being a note. Grain Pad, Grain Shimmer and Grain Dust in the bank are those
-three places.
+Length and overlap are really one control: the grain train repeats at overlap divided by
+length, and you hear that rate as a pair of sidebands either side of the note. Long grains
+deep in overlap make a texture. Short grains at an overlap below one make the note stop being
+a note. Grain Pad, Grain Shimmer and Grain Dust are those three places.
 
-Each line has its own cloud, so one line can scatter while another plays
-straight. **Hurdy Gurdy** in the bank is why that matters: its melody string and
-its drone are plain oscillators and its chien, the loose bridge that rattles, is
-a grain cloud, because a rattle has no pitch and nothing in a phase distortion
-oscillator can make one.
+**CZ ONLY.** A CZ is two lines, three envelopes each, ring and noise modulation, a bend wheel
+and portamento. If you came here for a CZ, one button in the header hides everything the
+hardware never had.
 
-A CZ voice dump has no byte for any of this, so saving a granular patch as .syx
-says so in the report rather than losing it quietly.
+<img src="docs/cz-only.png" width="720" alt="The CZ ONLY view: just what a CZ-101 had">
+
+It is a view, not a mode. Nothing is switched off and no sound changes, so if something hidden is
+still running the panel says so: *hidden and still running: chorus, delay*.
+
+---
+
+## Casio patch files
+
+pdsynth reads and writes Casio CZ voice dumps (`.syx`), the CZ-101/1000/5000 format that every CZ
+can read. Two buttons in the header, **Load .syx** and **Save .syx**.
+
+A translation never fails silently. pdsynth has four lines where a CZ has two, a filter the
+hardware never had, and it hears velocity a CZ-101 cannot. So every load and every save comes
+back with a written list of what could not make the trip, naming the control each time. It
+does not refuse and it does not quietly round.
+
+It also keeps what it does not understand. **A voice loaded and saved again is byte for byte the
+file that arrived**, including the parts pdsynth has no controls for. A librarian that rewrites
+bytes it does not model corrupts a collection quietly, one save at a time.
+
+### The factory sounds as a bank
+
+The 27 presets are already exported as Casio dumps in [`banks/`](banks/): two files of sixteen
+and eleven voices, plus a slot list. Copy them to a flash drive beside your CZ banks and send
+them with any MIDI utility. **You do not need to build anything.**
+
+Twelve of the 27 lean on something a CZ does not have, such as grains or a third line. The slot
+list marks those "approximate on a real CZ" and names what is missing. To regenerate the files:
+
+```
+pd_exportbank <directory> [midi channel]
+```
+
+---
+
+## Build it yourself
+
+```
+cmake -B build && cmake --build build
+```
+
+Fetches JUCE 8 and clap-juce-extensions and produces the standalone, CLAP, VST3, AU (macOS) and
+LV2. The synthesis is plain C with no dependencies: `-DPDSYNTH_BUILD_PLUGIN=OFF` builds just the
+engine, the tests and the headless renderer.
+
+```
+ctest --test-dir build
+```
+
+<details>
+<summary><b>How it is tested</b> (13 suites, and why you can believe them)</summary>
+
+<br>
+
+The oscillator is judged by its spectrum, because that is the only thing about an oscillator a
+listener can hear. The envelope is judged by where it is at a given moment. The voice is judged
+on pitch, detuning and velocity.
+
+Two suites judge the bank. One asks whether a preset is broken: does it sound, does it answer
+the hand, does it sit at the level of its neighbors, does it survive having its filter switched
+on. The other asks whether a preset behaves like the thing it is named after. Those targets come
+from how the instruments work rather than from taste: a struck bar rings and then stops, brass
+brightens after the note starts, a formant stays put while the pitch moves, two bowls shimmer
+instead of pulsing.
+
+The librarian is checked twice, once through the C translator and once out to the plugin's
+parameters and back, which is the trip a player's patch actually makes. Parameters are floats with
+ranges, and a rate of 73 coming back as 72 would quietly alter every patch anybody saved.
+
+The grain cloud cannot be judged like the oscillator. Scattering a tone smears its spectrum on
+purpose, so the tests ask a player's questions instead: is it still the note, does it stay that note
+when the spread opens, does the level hold when the density changes, does it click.
+
+The suites are also checked by breaking the code on purpose and seeing whether they notice. That is
+how several tests were found to be passing while checking nothing.
+
+```
+tools/same-sound.sh v0.3.0
+```
+
+answers a question no suite can: did this change move a single sample. It renders the demo at an
+earlier commit and at the working tree and compares the bytes.
+
+</details>
+
+## Still to come
+
+Every claim about the librarian is verified against twenty real CZ patch files, and **none of it has
+ever touched a real CZ.** If you own a CZ, or the recent hardware reissue, a dump out of it and a
+write back into it would be worth more than everything above. CV and gate are in and checked on every
+push, but the last mile needs a DC coupled interface before the voltages mean anything.
 
 ## Thanks
 
-To [Sean Bolton](https://github.com/smbolton), whose asynchronous granular
-oscillator in ZedSynth (formerly WhySynth) the grain scheduler and its five
-window shapes are ported from, and who gave his blessing for it; and through
-him to **Mats Olsson**, whose MSS the window shapes came from before that. Both
-notices are kept at the top of `src/pd_grain.c`, where they belong. Their code
-is GPL and so is this, which is the arrangement working as intended rather than
-a favour anyone had to do.
+To [Sean Bolton](https://github.com/smbolton), whose asynchronous granular oscillator in
+ZedSynth (formerly WhySynth) the grain scheduler and its five window shapes are ported from, with his
+blessing; and through him to **Mats Olsson**, whose MSS the window shapes came from before that. Both
+notices are kept at the top of `src/pd_grain.c`. One thing changed on the way across: their per-grain
+detune is drawn from an asymmetric range, so opening the spread also raised the pitch. Here it is
+symmetric, in cents, and a test holds it centered.
 
-One thing changed on the way across, and it is worth naming rather than
-burying: their per grain detune is drawn from an asymmetric range, so opening
-the spread also raises the pitch. Their source carries a `-FIX- does not center
-on frequency` note about it. Here the draw is symmetric and the detune is in
-cents, and `test_grain` measures the cloud's center against the note to hold it
-that way. Putting their version back makes that test read 176 cents sharp.
-
-To [@Reaper10](https://github.com/Reaper10). Describing what a software CZ
-ought to be is why this exists at all, and it did not stop there. Naming what
-he actually caused is more use than thanking him in general:
+To [@Reaper10](https://github.com/Reaper10), whose describing of what a software CZ ought to be is why
+this exists, and who kept going. What he actually caused:
 
 | | |
 |---|---|
@@ -295,28 +239,21 @@ he actually caused is more use than thanking him in general:
 | "I can't see the title bar" | the window opening bigger than the screen, fixed |
 | "where is the filter?", with a screenshot | a status line that read as "this synth has no filter", reworded |
 | "could it do a waterphone?" | the Waterphone preset, and the measurement that decides whether it is one |
-| asking where the bend range was | bend range and mod depth given controls, having been invisible since the first release |
+| asking where the bend range was | bend range and mod depth given controls, invisible since the first release |
 | asking for a granular synth | the grain cloud on every line, and three presets for it |
+| asking for a hurdy-gurdy, a choir, a glass harmonica | three presets, and two bugs found while building them |
+| asking for the factory bank as a file | `banks/`, and the exporter |
 
-Most of those are not feature requests. They are somebody using the thing and
-saying what was wrong with it, which is the part that cannot be done alone.
+Most of those are not feature requests. They are somebody using the thing and saying what was wrong
+with it, which is the part that cannot be done alone.
 
 ## What helps
 
-Bug reports, especially with a screenshot. Something that looks wrong to you is
-worth more here than a feature nobody asked for, and more than a list of links.
+Bug reports, ideally with a screenshot. Dumps off real hardware. Documented formats: what the bytes
+mean, from a manual or an open source tool that already reads them.
 
-Dumps off real hardware. Nothing in the librarian has ever touched a CZ. A
-voice dumped from one, and whether writing it back sounds right, would settle
-in an afternoon what twenty patch files cannot.
-
-Documented formats: what the bytes mean, from a manual or an open source tool
-that already reads them.
-
-**Not ROM images or firmware.** Those are the manufacturer's copyrighted code
-and cannot be accepted here, in an issue or anywhere else. It is the same rule
-that means this contains no Casio data: the project is only worth having if it
-is legal to have.
+**Not ROM images or firmware.** Those are the manufacturer's copyrighted code and cannot be accepted
+here, in an issue or anywhere else. It is the same rule that means this contains no Casio data.
 
 ## License
 
