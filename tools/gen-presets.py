@@ -445,6 +445,47 @@ PRESETS = [
    # (found the same way on Vowel Choir) and turns a pure tone into a harsh one.
    velw=.15, velv=.4, modw=.3, gain=0.85, spread=0.75,
    fx=Fx(chorus=0.18, cho_depth=2.6, cho_rate=0.17, delay=0.24, dly_time=0.46, dly_fb=0.30, dly_tone=0.38)),
+
+ # ---------------------------------------------------------------------------
+ # The didgeridoo: a hollow log, a drone, and a player's mouth.
+ #
+ # Asked for by Reaper10 and confirmed by Keith.
+ #
+ # What is heard is three things at once. A low, steady drone that does not
+ # decay, because the player breathes in through the nose while the cheeks keep
+ # blowing. A very rich spectrum above it, because the lips buzz a harsh,
+ # complete series of harmonics into the tube. And the mouth: the player moves
+ # tongue and cheeks rhythmically, which sweeps a resonance up and down through
+ # the harmonics, and that sweep is the "wah" that makes the sound a
+ # didgeridoo and not just a low buzz.
+ #
+ # The engine has no LFO, so the sweep is the waveform envelope of line 1,
+ # which already drives the filter cutoff as well as the phase bend. It is
+ # eight steps, so it sweeps a few times and then settles on a held resonance;
+ # a real player would keep going. That is a limit of this engine and is
+ # stated here, not hidden.
+ #
+ # The resonance sits at roughly 1 kHz to 1.5 kHz, a fixed band and not one
+ # that follows the note, because it belongs to the player's mouth. The filter
+ # has key tracking at zero for that reason, exactly as Vowel Choir does.
+ # ---------------------------------------------------------------------------
+ Preset("Didgeridoo", "Didge", [
+   # the mouth: a resonant sawtooth, whose peak sits at a multiple of the note
+   # that the waveform envelope moves, which is exactly the sweep a player's
+   # tongue makes. Line 1's envelope is the one that sweeps.
+   L('rsaw', .52, 0, wenv=env([70,34,34,34,34,34,40,60],[30,85,30,85,30,85,52,0],6,7),
+     aenv=env([55,40,40],[99,95,0],1,2)),
+   # the drone: nearly a pure low tone, because a didgeridoo's fundamental is
+   # the loudest thing in it, and the resonant line above has almost none
+   L('dsine', .32, -3, wenv=env([40,34,38],[60,56,0],1,2), aenv=env([55,40,40],[99,95,0],1,2)),
+   # the lips: a complete harmonic series, a few cents off the drone
+   L('sawpulse', .26, +5, wenv=env([40,34,38],[74,70,0],1,2), aenv=env([55,40,40],[99,95,0],1,2)),
+   # the lip buzz itself: short irregular grains, the roughness a pure tone lacks
+   L('sawpulse', .14, 0, wenv=env([40,34,38],[80,70,0],1,2), aenv=env([55,40,40],[99,95,0],1,2),
+     grain=G(on=1, shape='trapezoid', edge=0.4, length_ms=12.0, overlap=0.8, onset=0.7, pitch=0.06))],
+   noise=0.03, velw=.3, velv=.4, modw=.3, gain=0.8, spread=0.25,
+   filt='lowpass', cutoff=2600.0, res=0.2, filt_env=0.0, filt_key=0.0,
+   fx=Fx()),
 ]
 
 HEADER = '''/*

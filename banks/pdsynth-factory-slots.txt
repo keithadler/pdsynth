@@ -1,4 +1,4 @@
-pdsynth factory bank, 27 voices in 2 files
+pdsynth factory bank, 28 voices in 2 files
 Each file is one CZ internal memory area: send it and it fills
 Internal 1 to 16. MIDI channel 1.
 
@@ -55,5 +55,9 @@ pdsynth-factory-2of2.syx
   Internal 11  Glass Harmonica  (approximate on a real CZ)
                   - Lines 3 and 4
                   - Granular
+  Internal 12  Didgeridoo       (approximate on a real CZ)
+                  - Lines 3 and 4
+                  - Granular
+                  - Filter
 
-12 of 27 voices lean on something that changes the voice itself.
+13 of 28 voices lean on something that changes the voice itself.

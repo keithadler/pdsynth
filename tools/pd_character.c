@@ -189,6 +189,20 @@ static double timbre_centre(double from, double to)
     return den > 0 ? num / den : 0.0;
 }
 
+/* The same centre of gravity, but over a window anywhere in the note, which is
+ * what a sweep needs: timbre_centre only ever looks at 0.30 to 0.50 seconds. */
+static double centre_at(double t, double win, double from, double to)
+{
+    double num = 0, den = 0;
+    for (double hz = from; hz < to; hz *= 1.01) {
+        const double m = mag_at(hz, t, win);
+        const double p2 = m * m;
+        num += p2 * hz;
+        den += p2;
+    }
+    return den > 0 ? num / den : 0.0;
+}
+
 /* brightness relative to the note, so it can be compared across pitches */
 static double bright(double f0, double from, double win)
 {
@@ -461,6 +475,96 @@ int main(void)
             const double buzz = between_harmonics(&pr->patch, f0, 0.40, 0.20);
             want(buzz > 0.20, n, "the chien has to rattle, not hum", buzz, 0.20, 99.0);
 
+        } else if (!strcmp(f, "Didge")) {
+            /*
+             * A didgeridoo is a drone, a rich buzz above it, and a player's
+             * mouth, and the test is that all three are there.
+             *
+             * The drone does not decay (the player breathes in through the
+             * nose while the cheeks keep blowing) and the fundamental is the
+             * loudest thing in it. Above that the lips buzz a harsh series of
+             * harmonics. And the mouth moves: the tongue and cheeks sweep a
+             * resonance up and down through those harmonics, which is the
+             * "wah", and is what makes the sound a didgeridoo and not a low
+             * buzz. This engine has no LFO, so the sweep is an envelope: it
+             * sweeps a few times and then settles, and the test says so
+             * rather than pretending it goes on forever.
+             *
+             * Played at D2 (note 38), about where a didgeridoo drones, and
+             * not at middle C, which no didgeridoo reaches.
+             */
+            const int low = 38;
+            const double fd = 440.0 * pow(2.0, (low - 69) / 12.0);
+
+            play_filtered(&pr->patch, low, 0.9);
+            const double e04 = rms_at(0.40, 0.30), e25 = rms_at(2.50, 0.30);
+            want(e04 > 1e-4, n, "it has to be sounding to be measured", e04, 1e-4, 9.9);
+            const double sus = e04 > 0 ? e25 / e04 : 0.0;
+            /* measured 1.06; a decaying envelope on line 1's amplitude reads about 0.2 */
+            want(sus > 0.70, n, "the drone does not decay while the cheeks keep blowing", sus, 0.70, 9.9);
+
+            const double fund = band_peak(fd * 0.98, fd * 1.02, 0.30, 0.20);
+            double other = 0;
+            for (int k = 2; k <= 30; k++) {
+                const double m = band_peak(k * fd * 0.98, k * fd * 1.02, 0.30, 0.20);
+                if (m > other) other = m;
+            }
+            const double drone = other > 0 ? fund / other : 99.0;
+            /* measured 2.3; with the drone line removed it reads 0.6 */
+            want(drone > 1.2, n, "the fundamental is the loudest partial (over the next loudest)", drone, 1.2, 99.0);
+
+            const double rich = harmonic_content(5.0 * fd, 6000.0);
+            /* measured 0.087; a sine drone alone reads 0.000 */
+            want(rich > 0.04, n, "and the lips buzz a rich series above it (share above the 5th harmonic)", rich, 0.04, 1.0);
+
+            /* the mouth: the timbre moves while the note does not */
+            double lo = 1e9, hi = 0;
+            for (double t = 0.10; t < 1.80; t += 0.10) {
+                const double c = centre_at(t, 0.10, 5.0 * fd, 6000.0);
+                if (c < lo) lo = c;
+                if (c > hi) hi = c;
+            }
+            const double sweep = lo > 1.0 ? hi / lo : 0.0;
+            /* measured 2.0; with line 1's envelope held flat it reads 1.0 */
+            want(sweep > 1.5, n, "the player's mouth sweeps the resonance (highest over lowest centre)", sweep, 1.5, 99.0);
+
+            double slo = 1e9, shi = 0;
+            for (double t = 2.20; t < 2.90; t += 0.10) {
+                const double c = centre_at(t, 0.10, 5.0 * fd, 6000.0);
+                if (c < slo) slo = c;
+                if (c > shi) shi = c;
+            }
+            const double settled = slo > 1.0 ? shi / slo : 99.0;
+            /* measured 1.03: after its few sweeps the envelope holds one position */
+            want(settled < 1.20, n, "and then settles on one position (highest over lowest centre)", settled, 0.0, 1.20);
+
+            /* the same patch an octave up still sweeps */
+            play_filtered(&pr->patch, low + 12, 0.9);
+            const double fu = fd * 2.0;
+            double ulo = 1e9, uhi = 0;
+            for (double t = 0.10; t < 1.80; t += 0.10) {
+                const double c = centre_at(t, 0.10, 5.0 * fu, 6000.0);
+                if (c < ulo) ulo = c;
+                if (c > uhi) uhi = c;
+            }
+            want(ulo > 1.0 && uhi / ulo > 1.4, n, "an octave up it still sweeps", ulo > 1.0 ? uhi / ulo : 0.0, 1.4, 99.0);
+
+            /*
+             * How long it takes to get going, judged over the first 1.5
+             * seconds. attack_ms looks at 0.4 seconds only, so a swell that
+             * takes two seconds reads as instant: its loudest moment inside
+             * the window is still early in the swell. Here the reference is
+             * the loudest 20 ms of the first 1.5 seconds, and the answer is
+             * when the sound first reaches 80 percent of that.
+             */
+            play(&pr->patch, low, 0.95, 2.9);
+            double top = 0;
+            for (double t = 0.0; t < 1.5; t += 0.02) { const double r = rms_at(t, 0.02); if (r > top) top = r; }
+            double up = -1;
+            for (double t = 0.0; t < 1.5; t += 0.02) if (rms_at(t, 0.02) >= 0.80 * top) { up = t * 1000.0; break; }
+            /* measured about 40 ms; a click reads 0 to 20 and a two second swell reads over 1000 */
+            want(up >= 15.0 && up < 400.0, n,
+                 "a breath, not a click, and not a slow swell either (ms to 80 percent)", up, 15.0, 400.0);
         } else if (!strcmp(f, "Water")) {
             /* The defining trait, and the hard one: a waterphone's partials
              * are not harmonics. Anything a bent sine does on its own would
