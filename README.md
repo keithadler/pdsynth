@@ -10,7 +10,7 @@ A free synthesizer for macOS, Windows and Linux. VST3, CLAP, AU, LV2 and standal
 
 ### [Download the latest release](https://github.com/keithadler/pdsynth/releases/latest)
 
-Free, GPL, no account, nothing phones home. 28 sounds built in, and it reads and
+Free, GPL, no account, nothing phones home. 29 sounds built in, and it reads and
 writes real Casio CZ patch files.
 
 ---
@@ -39,7 +39,7 @@ script can play it without a settings dialog.
 
 ## The sounds
 
-Twenty-eight presets, all original designs. Each is checked against how the real
+Twenty-nine presets, all original designs. Each is checked against how the real
 instrument behaves, not just against "sounds fine": a marimba has to ring and then stop, brass
 has to brighten after the note starts, a hurdy-gurdy has to rattle.
 
@@ -48,7 +48,7 @@ has to brighten after the note starts, a hurdy-gurdy has to rattle.
 | **Keys** | Glass Tine (a glass electric piano), Harpsi, Synth Clav |
 | **Bass** | Rubber Bass, Fretless |
 | **Strings and brass** | Digi Strings, Pizzicato, Brass Stab, Brass Swell |
-| **Wind and lead** | Air Flute, Reed Pipe, Sweep Lead, Formant Sweep |
+| **Wind and lead** | Air Flute, Reed Pipe, **Tin Whistle**, Sweep Lead, Formant Sweep |
 | **Bells and mallets** | Bell Pad, Tubular, Marimba, Steel Drum, Vibe Bar |
 | **Voices** | Choir Ah (a pad), **Vowel Choir** (a real, fixed vowel) |
 | **Odd and wonderful** | **Waterphone**, **Hurdy Gurdy**, **Glass Harmonica**, **Didgeridoo**, Drawbar |
@@ -67,6 +67,9 @@ A few are worth hearing first:
   the harmonics, which is the "wah". This engine has no LFO, so the sweep is an envelope: it sweeps a
   few times and then settles on one position, where a real player would keep going. Play it low, around
   D2, because no didgeridoo drones at middle C.
+- **Tin Whistle** is close to a pure tone, and everything that makes it a whistle is around the tone: a
+  short burst of breath noise at the start, the pitch coming up into the note from a little flat, and a
+  little air left in the held tone. Play it in a whistle's own range, D4 to D6.
 - **Waterphone** has partials that are not harmonics at all, which nothing a bent sine does
   on its own can fake.
 
@@ -154,11 +157,11 @@ bytes it does not model corrupts a collection quietly, one save at a time.
 
 ### The factory sounds as a bank
 
-The 28 presets are already exported as Casio dumps in [`banks/`](banks/): two files of sixteen
-and twelve voices, plus a slot list. Copy them to a flash drive beside your CZ banks and send
+The 29 presets are already exported as Casio dumps in [`banks/`](banks/): two files of sixteen
+and thirteen voices, plus a slot list. Copy them to a flash drive beside your CZ banks and send
 them with any MIDI utility. **You do not need to build anything.**
 
-Thirteen of the 28 lean on something a CZ does not have, such as grains or a third line. The slot
+Fourteen of the 29 lean on something a CZ does not have, such as grains or a third line. The slot
 list marks those "approximate on a real CZ" and names what is missing. To regenerate the files:
 
 ```

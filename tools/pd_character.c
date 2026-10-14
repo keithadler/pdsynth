@@ -33,6 +33,7 @@
  */
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "pd_presets.h"
 
@@ -203,6 +204,56 @@ static double centre_at(double t, double win, double from, double to)
     return den > 0 ? num / den : 0.0;
 }
 
+/* Energy in a band, in a window anywhere in the note. */
+static double band_energy(double lo, double hi, double t, double win)
+{
+    double e = 0;
+    for (double hz = lo; hz < hi; hz *= 1.05) {
+        const double m = mag_at(hz, t, win);
+        e += m * m;
+    }
+    return e;
+}
+
+/*
+ * How far the pitch is from `f0`, in cents, over a stretch of the note.
+ *
+ * The signal is multiplied by a complex tone at f0 and averaged over 8 ms
+ * blocks. What is left is the part of the sound within about 60 Hz of f0 and
+ * nothing else, so the broadband burst at the start of a whistle cannot
+ * confuse it, which a zero-crossing count would be. The phase of each block
+ * is unwrapped and a straight line fitted through them; the slope is the
+ * frequency difference.
+ */
+static double pitch_cents(double f0, double t, double win)
+{
+    const int blk = (int)(0.008 * SR), nb = (int)(win / 0.008);
+    if (nb < 3) return 0.0;
+    const int a = (int)(t * SR);
+    if (a + nb * blk > used) return 0.0;
+    const double w = 2.0 * M_PI * f0 / SR;
+    double ph[64], prev = 0;
+    for (int b = 0; b < nb && b < 64; b++) {
+        double re = 0, im = 0;
+        for (int i = 0; i < blk; i++) {
+            const double x = buf[a + b * blk + i], ang = w * (b * blk + i);
+            re += x * cos(ang);
+            im -= x * sin(ang);
+        }
+        double p = atan2(im, re);
+        if (b > 0) { while (p - prev > M_PI) p -= 2 * M_PI; while (p - prev < -M_PI) p += 2 * M_PI; }
+        ph[b] = p;
+        prev = p;
+    }
+    /* least squares slope of phase against block index */
+    double sx = 0, sy = 0, sxx = 0, sxy = 0;
+    const int n = nb < 64 ? nb : 64;
+    for (int b = 0; b < n; b++) { sx += b; sy += ph[b]; sxx += (double)b * b; sxy += b * ph[b]; }
+    const double slope = (n * sxy - sx * sy) / (n * sxx - sx * sx);   /* radians per block */
+    const double dev_hz = slope / (2.0 * M_PI) / 0.008;
+    return 1200.0 * log2(1.0 + dev_hz / f0);
+}
+
 /* brightness relative to the note, so it can be compared across pitches */
 static double bright(double f0, double from, double win)
 {
@@ -261,8 +312,10 @@ static double attack_ms(void)
 }
 
 static int failures;
+static int verbose;   /* PD_CHARACTER_VERBOSE=1 prints every measurement, passed or not */
 static void want(int ok, const char *name, const char *why, double got, double lo, double hi)
 {
+    if (verbose) printf("  %s %-14s %-46s %.4g (want %.4g to %.4g)\n", ok ? "ok  " : "FAIL", name, why, got, lo, hi);
     if (ok) return;
     failures++;
     printf("  %-14s %-46s got %.2f, want %.2f to %.2f\n", name, why, got, lo, hi);
@@ -272,6 +325,7 @@ int main(void)
 {
     const double f0 = 261.6256;   /* middle C, the note everything is judged at */
 
+    verbose = getenv("PD_CHARACTER_VERBOSE") != NULL;
     printf("character: does each preset behave like the thing it is named after\n\n");
     for (int i = 0; i < pd_preset_count(); i++) {
         const pd_preset_t *pr = pd_preset(i);
@@ -565,6 +619,60 @@ int main(void)
             /* measured about 40 ms; a click reads 0 to 20 and a two second swell reads over 1000 */
             want(up >= 15.0 && up < 400.0, n,
                  "a breath, not a click, and not a slow swell either (ms to 80 percent)", up, 15.0, 400.0);
+        } else if (!strcmp(f, "Whistle")) {
+            /*
+             * A tin whistle is very nearly a pure tone, and everything that
+             * makes it a whistle is around the tone.
+             *
+             * The tone: the fundamental is by far the loudest partial, and it
+             * holds, because the player keeps blowing. The chiff: air arrives
+             * before the pitch settles, so there is a burst of noise at the
+             * start, well above what is left of it once the note is going. The
+             * breath: a little air stays in the held tone, quiet but there, or
+             * it is a sine with a click on the front. And the scoop: breath
+             * pressure builds, so the pitch comes up into the note from a
+             * little flat. Played at D5 and D4, a whistle's own range.
+             */
+            const int notes[2] = { 74, 62 };
+            for (int ni = 0; ni < 2; ni++) {
+                const int wn = notes[ni];
+                const double fw = 440.0 * pow(2.0, (wn - 69) / 12.0);
+                play(&pr->patch, wn, 0.9, 1.2);
+
+                const double e15 = rms_at(0.15, 0.10), e10 = rms_at(1.00, 0.10);
+                want(e15 > 1e-4, n, "it has to be sounding to be measured", e15, 1e-4, 9.9);
+                const double sus = e15 > 0 ? e10 / e15 : 0.0;
+                /* measured 1.00; with a decaying amplitude envelope it reads about 0.1 */
+                want(sus > 0.70, n, "it holds while blown", sus, 0.70, 9.9);
+
+                const double fund = band_peak(fw * 0.98, fw * 1.02, 0.40, 0.20);
+                double other = 0;
+                for (int k = 2; k <= 8; k++) {
+                    const double m = band_peak(k * fw * 0.98, k * fw * 1.02, 0.40, 0.20);
+                    if (m > other) other = m;
+                }
+                const double pure = other > 0 ? fund / other : 99.0;
+                /* measured 10.8 at D5; bending the tone harder reads about 1 */
+                want(pure > 4.0, n, "very nearly a pure tone (fundamental over the loudest other partial)", pure, 4.0, 99.0);
+
+                const double early = band_energy(3.2 * fw, 9000.0, 0.005, 0.045);
+                const double late  = band_energy(3.2 * fw, 9000.0, 0.40, 0.20);
+                const double chiff = late > 1e-14 ? early / late : 0.0;
+                /* measured 9.4 at D5 and 7.4 at D4; with the chiff line silent about 2 to 3 */
+                want(chiff > 4.0, n, "the air arrives first: a burst of noise at the start (early over late, high band)", chiff, 4.0, 1e9);
+
+                const double breath = fund > 1e-6 ? late / (fund * fund) : 0.0;
+                /* measured 5e-4 at D5 and 1.1e-3 at D4 (about -33 and -30 dB); with the air taken out 1e-5
+                 * to 1e-6; with the chiff never stopping 2.4e-3 and 3.5e-3, which is a hiss laid on the tone */
+                want(breath > 1e-4, n, "a little air stays in the held tone (high band over the fundamental, power)", breath, 1e-4, 2e-3);
+                want(breath < 2e-3, n, "but it is a breath and not a hiss (high band over the fundamental, power)", breath, 1e-4, 2e-3);
+
+                const double lead = pitch_cents(fw, 0.03, 0.08), rest = pitch_cents(fw, 0.40, 0.20);
+                /* measured about -15 cents early and 0 at rest; with no pitch envelope both read 0 */
+                want(fabs(rest) < 5.0, n, "once settled it is on pitch (cents)", rest, -5.0, 5.0);
+                want(rest - lead > 6.0, n, "the pitch comes up into the note from a little flat (cents lower at the start)", rest - lead, 6.0, 40.0);
+                want(rest - lead < 40.0, n, "but only a little (cents lower at the start)", rest - lead, 6.0, 40.0);
+            }
         } else if (!strcmp(f, "Water")) {
             /* The defining trait, and the hard one: a waterphone's partials
              * are not harmonics. Anything a bent sine does on its own would

@@ -486,6 +486,36 @@ PRESETS = [
    noise=0.03, velw=.3, velv=.4, modw=.3, gain=0.8, spread=0.25,
    filt='lowpass', cutoff=2600.0, res=0.2, filt_env=0.0, filt_key=0.0,
    fx=Fx()),
+ # ---------------------------------------------------------------------------
+ # The tin whistle: a fipple flute, six holes, and a breath.
+ #
+ # Asked for by Reaper10.
+ #
+ # Close to a pure tone, which is why it sounds so clear and so exposed: the
+ # second harmonic is well down and the rest is hardly there. What makes it a
+ # whistle and not a sine is everything around the tone. The air arrives
+ # before the pitch settles, so there is a short burst of breath noise at the
+ # start, the chiff. The pitch itself comes up into the note from a little
+ # flat, because the player's breath pressure builds. And there is air in the
+ # tone for as long as it is held.
+ #
+ # Line 1 is the tone, with its pitch envelope starting a little flat. Line 2
+ # is the octave partial, small. Line 3 is the chiff: a grain cloud of very
+ # short grains scattered widely in pitch, which is noise, that opens at once
+ # and is gone in about 45 ms. The air in the held tone is noise modulation on
+ # line 1, the same way Air Flute does it, so it reads as part of the tone and
+ # not as hiss laid over it.
+ # ---------------------------------------------------------------------------
+ Preset("Tin Whistle", "Whistle", [
+   L('dsine', .62, 0, wenv=env([58,42,46],[16,12,0],1,2), aenv=env([52,42,46],[99,94,0],1,2),
+     pdepth=0.5, penv=env([99,38,80],[45,99,95],1,2)),
+   L('dsine', .06, 0, octave=1, wenv=env([58,42,46],[20,16,0],1,2), aenv=env([50,42,46],[99,90,0],1,2)),
+   L('sawpulse', .18, 0, octave=2, wenv=env([99,40,40],[90,70,0],1,2), aenv=env([99,52,40],[99,4,0],1,2),
+     grain=G(on=1, shape='trapezoid', edge=0.3, length_ms=6.0, overlap=0.9, onset=0.9, pitch=0.5)),
+   # the air in the held tone: a quiet, steady cloud of noise-like grains
+   L('sawpulse', .16, 0, octave=2, wenv=env([99,40,40],[90,70,0],1,2), aenv=env([60,40,40],[70,60,0],1,2),
+     grain=G(on=1, shape='gaussian', edge=0.5, length_ms=12.0, overlap=5.0, onset=0.9, pitch=0.9))],
+   mix='noise', noise=.18, velw=.55, velv=.6, modw=.4, gain=0.6, spread=0.3),
 ]
 
 HEADER = '''/*
