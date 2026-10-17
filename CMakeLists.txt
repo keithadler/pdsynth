@@ -171,6 +171,21 @@ if(PDSYNTH_BUILD_PLUGIN)
     juce::juce_gui_basics juce::juce_dsp juce::juce_recommended_config_flags)
   add_test(NAME granular_through_plugin COMMAND pd_grainplugcheck)
 
+  # The octave buttons beside the keyboard. A button that is drawn is not a
+  # button that works, and nothing else here builds the editor and clicks it.
+  juce_add_console_app(pd_octavecheck PRODUCT_NAME "pd_octavecheck")
+  target_sources(pd_octavecheck PRIVATE tools/pd_octavecheck.cpp
+    plugin/PluginProcessor.cpp plugin/PluginEditor.cpp
+    plugin/EnvelopeEditor.cpp plugin/WaveDisplay.cpp plugin/Theme.cpp)
+  target_compile_definitions(pd_octavecheck PRIVATE
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_STANDALONE_APPLICATION=1
+    JucePlugin_Name="pdsynth" JucePlugin_IsSynth=1
+    JUCE_MODAL_LOOPS_PERMITTED=1)
+  target_include_directories(pd_octavecheck PRIVATE plugin)
+  target_link_libraries(pd_octavecheck PRIVATE pdcore juce::juce_audio_utils
+    juce::juce_gui_basics juce::juce_dsp juce::juce_recommended_config_flags)
+  add_test(NAME octave_buttons COMMAND pd_octavecheck)
+
   # Draws the editor with no window, so it can be looked at rather than assumed
   juce_add_console_app(pd_uishot PRODUCT_NAME "pd_uishot")
   target_sources(pd_uishot PRIVATE

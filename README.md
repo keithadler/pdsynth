@@ -19,8 +19,9 @@ writes real Casio CZ patch files.
 
 1. **[Download](https://github.com/keithadler/pdsynth/releases/latest)** the file for your system.
 2. **Just want to try it?** Open the standalone app. Press `z` to `m` and `q` to `i` on your
-   computer keyboard to play. Pick a sound from the box at the top. Arrow keys shift the
-   octave, space stops everything.
+   computer keyboard to play. Pick a sound from the box at the top. The `-` and `+` buttons
+   beside the keyboard shift the octave, and the keyboard drawn on screen moves with them (the
+   left and right arrow keys do the same). Space stops everything.
 3. **Using it in a DAW?** Copy the plugin for your host into its folder, rescan, and load it.
 
 | | VST3 | CLAP | AU | LV2 |

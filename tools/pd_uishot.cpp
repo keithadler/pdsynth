@@ -54,7 +54,7 @@ int main(int argc, char** argv)
     /* A fifth argument loads a .syx first, so the librarian's status line can
      * actually be looked at. Everything else about that line is reachable only
      * through a file dialog, which a headless run has no way to drive. */
-    if (argc > 5 && juce::String(argv[5]) != "--cz") {
+    if (argc > 5 && !juce::String(argv[5]).startsWith("--")) {
         juce::String rep;
         const bool ok = proc.loadSysex(juce::File(juce::String(argv[5])), rep);
         std::fprintf(stderr, "loadSysex: %s\n%s\n", ok ? "ok" : "failed",
@@ -68,6 +68,15 @@ int main(int argc, char** argv)
 
     std::unique_ptr<juce::AudioProcessorEditor> ed(proc.createEditor());
     ed->setSize(w, h);
+
+    /* --oct N presses the arrow key N times, which is the octave control, so the
+     * octave buttons and the keyboard drawn beside them can be looked at. */
+    for (int i = 1; i + 1 < argc; i++)
+        if (juce::String(argv[i]) == "--oct") {
+            int n = juce::String(argv[i + 1]).getIntValue();
+            for (; n > 0; n--) ed->keyPressed(juce::KeyPress(juce::KeyPress::rightKey));
+            for (; n < 0; n++) ed->keyPressed(juce::KeyPress(juce::KeyPress::leftKey));
+        }
 
     /* Let the editor's timers run and keep feeding it audio, so the meters and
      * the live views hold real numbers. Without this the render shows an empty

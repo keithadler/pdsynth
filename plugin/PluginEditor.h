@@ -15,6 +15,7 @@
 #include "EnvelopeEditor.h"
 #include "WaveDisplay.h"
 #include "Theme.h"
+#include <map>
 #include <set>
 
 namespace pd
@@ -122,7 +123,16 @@ private:
 
     static int noteForKey(int keyCode);
     std::set<int> heldKeys;
+    /* The note each held computer key actually started. The release has to stop that note, not
+     * whatever the octave has been moved to since, or shifting while a key is down leaves it ringing. */
+    std::map<int, int> heldNotes;
     int octaveShift = 0;
+
+    /* Moves the computer keys and the keyboard drawn on screen together, so the keys you can see are
+     * the keys under your hands. The range is three octaves either way, as the arrow keys always had. */
+    void setOctave(int shift);
+    juce::TextButton octDown, octUp;
+    juce::Label      octL, octValueL;
 
     /* The keyboard on screen and the keys under your hands both end up in the
      * same place: one MIDI stream into the synth. */

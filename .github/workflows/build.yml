@@ -151,6 +151,24 @@ jobs:
           cat /tmp/grain.txt
           exit $status
 
+      # The octave buttons beside the keyboard. A button that is drawn is not a
+      # button that works, and nothing else builds the editor and clicks it.
+      - name: The octave buttons move the keyboard
+        shell: bash
+        run: |
+          cmake --build build --config Release --target pd_octavecheck --parallel 4
+          BIN=$(find build -name "pd_octavecheck" -o -name "pd_octavecheck.exe" | head -1)
+          set +e
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a "$BIN" > /tmp/octave.txt 2>&1
+          else
+            "$BIN" > /tmp/octave.txt 2>&1
+          fi
+          status=$?
+          set -e
+          cat /tmp/octave.txt
+          exit $status
+
       # pluginval is what found the AU crash and the heap corruption in Helm.
       - name: pluginval
         if: runner.os == 'macOS' || runner.os == 'Linux'

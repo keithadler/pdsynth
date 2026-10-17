@@ -283,6 +283,26 @@ Editor::Editor(Processor& p)
     addAndMakeVisible(keyboard);
     kbState.addListener(this);
 
+    /* An octave control beside the keyboard. The arrow keys have always done this, with nothing on
+     * screen to say so or to say where you were; Reaper10 asked for a button. The buttons refuse
+     * keyboard focus so that clicking one does not stop the computer keys from playing. */
+    octDown.setButtonText("-");
+    octUp.setButtonText("+");
+    octDown.setTooltip("Octave down (left arrow)");
+    octUp.setTooltip("Octave up (right arrow)");
+    octDown.onClick = [this] { setOctave(octaveShift - 1); };
+    octUp.onClick   = [this] { setOctave(octaveShift + 1); };
+    for (auto* b : { &octDown, &octUp }) { b->setWantsKeyboardFocus(false); addAndMakeVisible(*b); }
+    octL.setText("OCTAVE", juce::dontSendNotification);
+    octL.setJustificationType(juce::Justification::centred);
+    octL.setFont(Theme::label(9.5f));
+    octValueL.setJustificationType(juce::Justification::centred);
+    octValueL.setFont(Theme::label(15.0f));
+    octValueL.setColour(juce::Label::textColourId, Theme::text);
+    addAndMakeVisible(octL);
+    addAndMakeVisible(octValueL);
+    setOctave(0);
+
     setWantsKeyboardFocus(true);
     setResizable(true, true);
     /*
@@ -598,6 +618,15 @@ void Editor::resized()
     auto mw = wheels;
     modWheelL.setBounds(mw.removeFromBottom(13));
     modWheel.setBounds(mw.reduced(6, 4));
+    bottom.removeFromLeft(6);
+    {
+        auto oc = bottom.removeFromLeft(64);
+        octL.setBounds(oc.removeFromTop(14));
+        octValueL.setBounds(oc.removeFromTop(20));
+        auto row = oc.reduced(0, 2);
+        octDown.setBounds(row.removeFromLeft(row.getWidth() / 2).reduced(2, 0));
+        octUp.setBounds(row.reduced(2, 0));
+    }
     bottom.removeFromLeft(10);
     {
         auto kb = bottom.reduced(0, 6);
@@ -809,12 +838,13 @@ int Editor::noteForKey(int k)
 
 bool Editor::keyPressed(const juce::KeyPress& k)
 {
-    if (k.getKeyCode() == juce::KeyPress::leftKey)  { octaveShift = juce::jmax(-3, octaveShift - 1); return true; }
-    if (k.getKeyCode() == juce::KeyPress::rightKey) { octaveShift = juce::jmin( 3, octaveShift + 1); return true; }
+    if (k.getKeyCode() == juce::KeyPress::leftKey)  { setOctave(octaveShift - 1); return true; }
+    if (k.getKeyCode() == juce::KeyPress::rightKey) { setOctave(octaveShift + 1); return true; }
     if (k.getKeyCode() == juce::KeyPress::spaceKey) {
         proc.uiNotes.addMessageToQueue(
             juce::MidiMessage::allNotesOff(1).withTimeStamp(juce::Time::getMillisecondCounterHiRes() * 0.001));
         heldKeys.clear();
+        heldNotes.clear();
         kbState.allNotesOff(1);
         return true;
     }
@@ -833,15 +863,29 @@ bool Editor::keyStateChanged(bool)
     for (int k : down)
         if (!heldKeys.count(k)) {
             int n = noteForKey(k) + octaveShift * 12;
-            if (n >= 0 && n < 128) kbState.noteOn(1, n, 0.8f);
+            if (n >= 0 && n < 128) { kbState.noteOn(1, n, 0.8f); heldNotes[k] = n; }
         }
     for (int k : heldKeys)
         if (!down.count(k)) {
-            int n = noteForKey(k) + octaveShift * 12;
-            if (n >= 0 && n < 128) kbState.noteOff(1, n, 0.0f);
+            /* the note it started, which is not the octave's current note if it moved while held */
+            auto it = heldNotes.find(k);
+            if (it != heldNotes.end()) { kbState.noteOff(1, it->second, 0.0f); heldNotes.erase(it); }
         }
     heldKeys = down;
     return true;
+}
+
+void Editor::setOctave(int shift)
+{
+    octaveShift = juce::jlimit(-3, 3, shift);
+    octValueL.setText(octaveShift > 0 ? "+" + juce::String(octaveShift) : juce::String(octaveShift),
+                      juce::dontSendNotification);
+    octDown.setEnabled(octaveShift > -3);
+    octUp.setEnabled(octaveShift < 3);
+    /* four octaves drawn, always the same number of white keys, so the key width does not change */
+    const int lowest = 36 + 12 * octaveShift;
+    keyboard.setAvailableRange(lowest, lowest + 48);
+    keyboard.setLowestVisibleKey(lowest);
 }
 /* ---------------------------------------------------------------------------
  * Casio voice dumps, in and out.
